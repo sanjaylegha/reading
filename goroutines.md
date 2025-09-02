@@ -170,25 +170,268 @@ func main() {
 
 #### 2.2.3 Preventing Premature Termination
 
+One of the most critical challenges in concurrent programming is ensuring that goroutines have sufficient time to complete their work before the main program terminates. Without proper coordination, you risk losing work, leaving resources in an inconsistent state, or missing important results.
+
+**The Problem: Uncoordinated Termination**
+
+When the main function exits, Go's runtime immediately terminates all running goroutines, regardless of their current state. This can lead to several issues:
+
+- **Data loss**: Goroutines might be in the middle of processing data
+- **Resource leaks**: Open files, network connections, or database transactions might not be properly closed
+- **Incomplete operations**: Long-running tasks might be cut short
+- **Inconsistent state**: Shared resources might be left in an intermediate state
+
+**Solution 1: Channel-Based Coordination**
+
+The most straightforward approach is to use channels as synchronization points between the main function and goroutines:
+
 ```go
 func main() {
-    // Use channels to coordinate
+    // Create a coordination channel
     done := make(chan bool)
     
+    // Start goroutine with coordination
     go func() {
-        fmt.Println("Goroutine working...")
+        fmt.Println("Goroutine: Starting work...")
+        
+        // Simulate some meaningful work
         time.Sleep(time.Millisecond * 500)
-        fmt.Println("Goroutine done!")
-        done <- true // Signal completion
+        
+        // Perform cleanup or finalization
+        fmt.Println("Goroutine: Finalizing results...")
+        time.Sleep(time.Millisecond * 100)
+        
+        fmt.Println("Goroutine: Work completed successfully!")
+        
+        // Signal completion to main function
+        done <- true
     }()
     
-    fmt.Println("Main waiting for goroutine...")
-    <-done // Wait for signal
-    fmt.Println("Main function exiting...")
+    fmt.Println("Main: Waiting for goroutine to complete...")
+    
+    // Block until goroutine signals completion
+    <-done
+    
+    fmt.Println("Main: Goroutine finished, proceeding with exit...")
+    fmt.Println("Main function exiting gracefully...")
 }
 ```
 
-**Better approach:** Use coordination mechanisms like channels to ensure goroutines complete their work before the main function exits.
+**How it works:**
+1. The main function creates a channel (`done`) for coordination
+2. The goroutine performs its work and sends a signal when complete
+3. The main function blocks on `<-done` until the signal is received
+4. Only after coordination does the main function proceed to exit
+
+**Solution 2: Multiple Goroutine Coordination**
+
+When you have multiple goroutines, you need to coordinate with all of them:
+
+```go
+func main() {
+    // Create coordination channels for multiple goroutines
+    worker1Done := make(chan bool)
+    worker2Done := make(chan bool)
+    worker3Done := make(chan bool)
+    
+    // Start multiple workers
+    go worker("Worker 1", 300, worker1Done)
+    go worker("Worker 2", 500, worker2Done)
+    go worker("Worker 3", 200, worker3Done)
+    
+    fmt.Println("Main: All workers started, waiting for completion...")
+    
+    // Wait for all workers to complete
+    <-worker1Done
+    <-worker2Done
+    <-worker3Done
+    
+    fmt.Println("Main: All workers completed, exiting...")
+}
+
+func worker(name string, duration time.Duration, done chan<- bool) {
+    fmt.Printf("%s: Starting work...\n", name)
+    
+    // Simulate work
+    time.Sleep(time.Millisecond * duration)
+    
+    fmt.Printf("%s: Work completed!\n", name)
+    
+    // Signal completion
+    done <- true
+}
+```
+
+**Solution 3: Using sync.WaitGroup for Multiple Goroutines**
+
+For scenarios with many goroutines, `sync.WaitGroup` provides a more elegant solution:
+
+```go
+import "sync"
+
+func main() {
+    var wg sync.WaitGroup
+    
+    // Start multiple workers
+    for i := 1; i <= 5; i++ {
+        wg.Add(1) // Increment counter before starting goroutine
+        
+        go func(workerID int) {
+            defer wg.Done() // Decrement counter when goroutine finishes
+            
+            fmt.Printf("Worker %d: Starting...\n", workerID)
+            
+            // Simulate work
+            workDuration := time.Duration(workerID*100) * time.Millisecond
+            time.Sleep(workDuration)
+            
+            fmt.Printf("Worker %d: Completed after %v\n", workerID, workDuration)
+        }(i)
+    }
+    
+    fmt.Println("Main: All workers started, waiting for completion...")
+    
+    // Wait for all goroutines to complete
+    wg.Wait()
+    
+    fmt.Println("Main: All workers completed, exiting...")
+}
+```
+
+**Solution 4: Context-Based Cancellation with Coordination**
+
+For more sophisticated scenarios, you can combine context cancellation with coordination:
+
+```go
+import "context"
+
+func main() {
+    // Create context with timeout
+    ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+    defer cancel()
+    
+    // Create coordination channel
+    done := make(chan bool)
+    
+    // Start worker that respects context
+    go func() {
+        defer func() {
+            done <- true // Always signal completion
+        }()
+        
+        for {
+            select {
+            case <-ctx.Done():
+                fmt.Println("Worker: Context cancelled, cleaning up...")
+                time.Sleep(time.Millisecond * 100) // Simulate cleanup
+                fmt.Println("Worker: Cleanup completed")
+                return
+            default:
+                fmt.Println("Worker: Processing...")
+                time.Sleep(time.Millisecond * 200)
+            }
+        }
+    }()
+    
+    fmt.Println("Main: Worker started, waiting for completion...")
+    
+    // Wait for worker to finish (either naturally or due to cancellation)
+    <-done
+    
+    fmt.Println("Main: Worker finished, exiting...")
+}
+```
+
+**Best Practices for Preventing Premature Termination**
+
+1. **Always coordinate**: Never assume goroutines will finish before main exits
+2. **Use appropriate mechanisms**: 
+   - Channels for simple one-to-one coordination
+   - `sync.WaitGroup` for multiple goroutines
+   - Context for cancellation scenarios
+3. **Handle cleanup**: Ensure goroutines can clean up resources before terminating
+4. **Consider timeouts**: Use context with timeouts to prevent indefinite waiting
+5. **Log coordination**: Add logging to understand the flow of your concurrent program
+
+**Common Anti-Patterns to Avoid**
+
+```go
+// DON'T: Rely on sleep timing
+func main() {
+    go worker()
+    time.Sleep(time.Second) // Unreliable and wasteful
+}
+
+// DON'T: Assume goroutines will finish quickly
+func main() {
+    go longRunningTask() // Might not complete before main exits
+    // Main exits immediately
+}
+
+// DON'T: Forget to coordinate with all goroutines
+func main() {
+    for i := 0; i < 10; i++ {
+        go worker(i) // Only coordinating with some workers
+    }
+    // Main might exit before all workers complete
+}
+```
+
+**Real-World Example: File Processing Pipeline**
+
+Here's a practical example that demonstrates proper coordination:
+
+```go
+func main() {
+    // Create coordination channels
+    filesProcessed := make(chan bool)
+    resultsCollected := make(chan bool)
+    
+    // Start file processor
+    go func() {
+        defer func() {
+            filesProcessed <- true
+        }()
+        
+        fmt.Println("File processor: Starting to process files...")
+        
+        // Simulate processing multiple files
+        for i := 1; i <= 5; i++ {
+            fmt.Printf("File processor: Processing file %d...\n", i)
+            time.Sleep(time.Millisecond * 300)
+            fmt.Printf("File processor: File %d completed\n", i)
+        }
+        
+        fmt.Println("File processor: All files processed")
+    }()
+    
+    // Start result collector
+    go func() {
+        defer func() {
+            resultsCollected <- true
+        }()
+        
+        fmt.Println("Result collector: Waiting for files to be processed...")
+        
+        // Wait for file processing to complete
+        <-filesProcessed
+        
+        fmt.Println("Result collector: Collecting results...")
+        time.Sleep(time.Millisecond * 200)
+        fmt.Println("Result collector: Results collected successfully")
+    }()
+    
+    fmt.Println("Main: Pipeline started, waiting for completion...")
+    
+    // Wait for both stages to complete
+    <-filesProcessed
+    <-resultsCollected
+    
+    fmt.Println("Main: Pipeline completed successfully, exiting...")
+}
+```
+
+This approach ensures that your concurrent programs are robust, predictable, and don't lose work due to premature termination. The key is to always think about the lifecycle of your goroutines and how they coordinate with the main program flow.
 
 ## Chapter 3: Goroutine Communication with Channels
 
