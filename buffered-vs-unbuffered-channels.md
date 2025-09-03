@@ -1970,3 +1970,1875 @@ In the next chapter, we'll explore **buffered channels**, which trade some synch
 ---
 
 *This chapter provided a comprehensive understanding of unbuffered channels, from theoretical foundations to practical implementation patterns. The synchronous nature of unbuffered channels makes them ideal for scenarios requiring tight coordination and natural backpressure.*
+
+---
+
+# Chapter 3: Buffered Channels (Asynchronous Channels)
+
+## Introduction to Buffered Channels
+
+Buffered channels represent Go's implementation of asynchronous message passing, providing a middle ground between the strict synchronization of unbuffered channels and completely decoupled communication. Unlike unbuffered channels that require both sender and receiver to be ready simultaneously, buffered channels include an internal queue that can store messages temporarily.
+
+### Theoretical Foundation
+
+#### Asynchronous Communication Model
+
+Buffered channels implement **asynchronous message passing** with the following characteristics:
+
+1. **Decoupled Communication**: Senders and receivers don't need to synchronize for every message
+2. **Bounded Buffer**: Internal storage with finite capacity prevents unlimited memory growth  
+3. **Flow Control**: Buffer capacity provides natural throttling mechanism
+4. **Partial Synchronization**: Synchronization occurs when buffer reaches capacity or becomes empty
+
+#### Mathematical Properties
+
+From a formal methods perspective, buffered channels satisfy different mathematical properties than unbuffered channels:
+
+**Property 1: Asynchronous Communication (when buffer not full/empty)**
+```
+send(v) with available_capacity > 0 → non_blocking_send(v)
+receive() with buffered_items > 0 → non_blocking_receive()
+```
+
+**Property 2: Synchronization Points**
+```
+send(v) when buffer_full → block_until_receiver_available
+receive() when buffer_empty → block_until_sender_available
+```
+
+**Property 3: FIFO Ordering**
+```
+∀ messages m1, m2: send(m1) happens-before send(m2) → receive(m1) happens-before receive(m2)
+```
+
+**Property 4: Capacity Constraint**
+```
+buffered_items ≤ capacity at all times
+```
+
+### Creating and Configuring Buffered Channels
+
+#### Basic Syntax and Semantics
+
+```go
+// Create buffered channels with different capacities
+ch1 := make(chan int, 1)      // Buffer capacity of 1
+ch2 := make(chan string, 10)  // Buffer capacity of 10  
+ch3 := make(chan bool, 100)   // Buffer capacity of 100
+
+// Check channel properties
+fmt.Printf("ch1 capacity: %d, length: %d\n", cap(ch1), len(ch1))
+fmt.Printf("ch2 capacity: %d, length: %d\n", cap(ch2), len(ch2))
+
+// Capacity and length change as items are added/removed
+ch1 <- 42
+fmt.Printf("After send - ch1 capacity: %d, length: %d\n", cap(ch1), len(ch1))
+
+value := <-ch1
+fmt.Printf("After receive - ch1 capacity: %d, length: %d\n", cap(ch1), len(ch1))
+```
+
+#### Buffer Capacity Design Considerations
+
+```go
+func demonstrateCapacityEffects() {
+    // Small buffer - frequent blocking
+    smallBuffer := make(chan int, 2)
+    
+    // Large buffer - less blocking  
+    largeBuffer := make(chan int, 1000)
+    
+    // Test small buffer behavior
+    fmt.Println("=== Small Buffer Test ===")
+    go func() {
+        for i := 0; i < 5; i++ {
+            fmt.Printf("Small buffer: Sending %d (len=%d, cap=%d)\n", 
+                i, len(smallBuffer), cap(smallBuffer))
+            smallBuffer <- i
+            fmt.Printf("Small buffer: Sent %d (len=%d)\n", i, len(smallBuffer))
+        }
+        close(smallBuffer)
+    }()
+    
+    time.Sleep(100 * time.Millisecond) // Let sender get ahead
+    
+    for value := range smallBuffer {
+        fmt.Printf("Small buffer: Received %d (len=%d)\n", value, len(smallBuffer))
+        time.Sleep(50 * time.Millisecond)
+    }
+    
+    // Test large buffer behavior  
+    fmt.Println("\n=== Large Buffer Test ===")
+    go func() {
+        for i := 0; i < 5; i++ {
+            fmt.Printf("Large buffer: Sending %d (len=%d, cap=%d)\n", 
+                i, len(largeBuffer), cap(largeBuffer))
+            largeBuffer <- i
+            fmt.Printf("Large buffer: Sent %d (len=%d)\n", i, len(largeBuffer))
+        }
+        close(largeBuffer)
+    }()
+    
+    time.Sleep(100 * time.Millisecond) // Let sender complete
+    
+    for value := range largeBuffer {
+        fmt.Printf("Large buffer: Received %d (len=%d)\n", value, len(largeBuffer))
+    }
+}
+```
+
+## Buffer Capacity and Behavior Analysis
+
+### Capacity vs Performance Trade-offs
+
+Different buffer sizes have distinct performance characteristics:
+
+```go
+func analyzeCapacityTradeoffs() {
+    capacities := []int{1, 10, 100, 1000}
+    itemCount := 10000
+    
+    for _, capacity := range capacities {
+        fmt.Printf("\n=== Testing capacity %d ===\n", capacity)
+        
+        ch := make(chan int, capacity)
+        start := time.Now()
+        
+        // Producer
+        go func() {
+            defer close(ch)
+            for i := 0; i < itemCount; i++ {
+                ch <- i
+            }
+        }()
+        
+        // Consumer
+        received := 0
+        for range ch {
+            received++
+        }
+        
+        duration := time.Since(start)
+        fmt.Printf("Capacity %d: %d items in %v (%.2f items/sec)\n",
+            capacity, received, duration, float64(received)/duration.Seconds())
+    }
+}
+```
+
+### Non-blocking vs Blocking Scenarios
+
+```go
+func demonstrateBlockingBehavior() {
+    ch := make(chan string, 3) // Buffer capacity of 3
+    
+    fmt.Println("=== Non-blocking sends (buffer has space) ===")
+    
+    // These sends won't block because buffer has space
+    for i := 1; i <= 3; i++ {
+        start := time.Now()
+        ch <- fmt.Sprintf("message-%d", i)
+        duration := time.Since(start)
+        fmt.Printf("Send %d completed in %v (len=%d, cap=%d)\n", 
+            i, duration, len(ch), cap(ch))
+    }
+    
+    fmt.Println("\n=== Blocking send (buffer full) ===")
+    
+    // This send will block because buffer is full
+    go func() {
+        start := time.Now()
+        fmt.Println("About to send to full buffer...")
+        ch <- "blocking-message"
+        duration := time.Since(start)
+        fmt.Printf("Blocking send completed in %v\n", duration)
+    }()
+    
+    time.Sleep(200 * time.Millisecond) // Let sender block
+    
+    fmt.Println("Buffer is full, sender is blocked")
+    fmt.Printf("Current buffer state: len=%d, cap=%d\n", len(ch), cap(ch))
+    
+    // Unblock by receiving
+    fmt.Println("\n=== Unblocking by receiving ===")
+    msg := <-ch
+    fmt.Printf("Received: %s (len=%d, cap=%d)\n", msg, len(ch), cap(ch))
+    
+    time.Sleep(50 * time.Millisecond) // Let blocked sender complete
+}
+```
+
+### Buffer State Monitoring
+
+```go
+func demonstrateBufferStateMonitoring() {
+    ch := make(chan int, 5)
+    done := make(chan bool)
+    
+    // Monitor goroutine
+    go func() {
+        ticker := time.NewTicker(100 * time.Millisecond)
+        defer ticker.Stop()
+        
+        for {
+            select {
+            case <-ticker.C:
+                fmt.Printf("Buffer state: %d/%d items (%.1f%% full)\n", 
+                    len(ch), cap(ch), float64(len(ch))/float64(cap(ch))*100)
+            case <-done:
+                return
+            }
+        }
+    }()
+    
+    // Variable rate producer
+    go func() {
+        defer close(ch)
+        for i := 1; i <= 10; i++ {
+            ch <- i
+            
+            // Variable delay
+            delay := time.Duration(rand.Intn(300)) * time.Millisecond
+            time.Sleep(delay)
+        }
+    }()
+    
+    // Variable rate consumer
+    go func() {
+        defer func() { done <- true }()
+        for value := range ch {
+            fmt.Printf("Consumed: %d\n", value)
+            
+            // Variable processing time
+            processTime := time.Duration(rand.Intn(200)) * time.Millisecond
+            time.Sleep(processTime)
+        }
+    }()
+    
+    <-done
+    time.Sleep(200 * time.Millisecond) // Final state
+}
+```
+
+## Memory Overhead and Management
+
+### Memory Allocation Analysis
+
+```go
+func analyzeMemoryUsage() {
+    fmt.Println("=== Memory Usage Analysis ===")
+    
+    // Test different buffer sizes
+    sizes := []int{0, 1, 10, 100, 1000, 10000}
+    
+    for _, size := range sizes {
+        var m1, m2 runtime.MemStats
+        runtime.GC()
+        runtime.ReadMemStats(&m1)
+        
+        // Create channel
+        ch := make(chan int, size)
+        
+        runtime.GC()
+        runtime.ReadMemStats(&m2)
+        
+        overhead := m2.Alloc - m1.Alloc
+        fmt.Printf("Buffer size %d: %d bytes overhead\n", size, overhead)
+        
+        // Keep channel alive
+        _ = ch
+    }
+}
+```
+
+### Memory Growth Patterns
+
+```go
+func demonstrateMemoryGrowth() {
+    ch := make(chan []byte, 1000)
+    
+    // Monitor memory usage
+    go func() {
+        var m runtime.MemStats
+        for i := 0; i < 10; i++ {
+            runtime.ReadMemStats(&m)
+            fmt.Printf("Memory: Alloc=%d KB, Sys=%d KB, Buffer len=%d\n",
+                m.Alloc/1024, m.Sys/1024, len(ch))
+            time.Sleep(500 * time.Millisecond)
+        }
+    }()
+    
+    // Fill buffer with large messages
+    go func() {
+        defer close(ch)
+        for i := 0; i < 500; i++ {
+            // Create 1KB message
+            message := make([]byte, 1024)
+            for j := range message {
+                message[j] = byte(i % 256)
+            }
+            
+            ch <- message
+            time.Sleep(10 * time.Millisecond)
+        }
+    }()
+    
+    // Slow consumer
+    count := 0
+    for msg := range ch {
+        count++
+        if count%100 == 0 {
+            fmt.Printf("Processed %d messages (msg size: %d bytes)\n", 
+                count, len(msg))
+        }
+        time.Sleep(50 * time.Millisecond)
+    }
+}
+```
+
+### Garbage Collection Impact
+
+```go
+func demonstrateGCImpact() {
+    const bufferSize = 1000
+    const messageCount = 10000
+    
+    ch := make(chan *Message, bufferSize)
+    
+    type Message struct {
+        ID      int
+        Payload [1024]byte // 1KB payload
+        created time.Time
+    }
+    
+    // Track GC stats
+    var gcBefore, gcAfter runtime.MemStats
+    runtime.ReadMemStats(&gcBefore)
+    
+    start := time.Now()
+    
+    // Producer
+    go func() {
+        defer close(ch)
+        for i := 0; i < messageCount; i++ {
+            msg := &Message{
+                ID:      i,
+                created: time.Now(),
+            }
+            ch <- msg
+        }
+    }()
+    
+    // Consumer
+    processed := 0
+    for msg := range ch {
+        processed++
+        _ = msg // Process message
+        
+        if processed%1000 == 0 {
+            runtime.GC() // Force GC to see impact
+        }
+    }
+    
+    duration := time.Since(start)
+    runtime.ReadMemStats(&gcAfter)
+    
+    fmt.Printf("Processed %d messages in %v\n", processed, duration)
+    fmt.Printf("GC runs: %d -> %d (increase: %d)\n", 
+        gcBefore.NumGC, gcAfter.NumGC, gcAfter.NumGC-gcBefore.NumGC)
+    fmt.Printf("Total GC pause: %v -> %v\n", 
+        time.Duration(gcBefore.PauseTotalNs), time.Duration(gcAfter.PauseTotalNs))
+}
+```
+
+## Advanced Buffered Channel Patterns
+
+### 1. Rate Limiting and Throttling
+
+```go
+type RateLimiter struct {
+    tokens chan struct{}
+    rate   time.Duration
+    done   chan struct{}
+}
+
+func NewRateLimiter(maxRate int, interval time.Duration) *RateLimiter {
+    rl := &RateLimiter{
+        tokens: make(chan struct{}, maxRate),
+        rate:   interval / time.Duration(maxRate),
+        done:   make(chan struct{}),
+    }
+    
+    // Fill initial tokens
+    for i := 0; i < maxRate; i++ {
+        rl.tokens <- struct{}{}
+    }
+    
+    // Token replenisher
+    go func() {
+        ticker := time.NewTicker(rl.rate)
+        defer ticker.Stop()
+        
+        for {
+            select {
+            case <-ticker.C:
+                select {
+                case rl.tokens <- struct{}{}:
+                    // Token added
+                default:
+                    // Buffer full, skip
+                }
+            case <-rl.done:
+                return
+            }
+        }
+    }()
+    
+    return rl
+}
+
+func (rl *RateLimiter) Allow() bool {
+    select {
+    case <-rl.tokens:
+        return true
+    default:
+        return false
+    }
+}
+
+func (rl *RateLimiter) Wait() {
+    <-rl.tokens
+}
+
+func (rl *RateLimiter) Stop() {
+    close(rl.done)
+}
+
+func demonstrateRateLimiting() {
+    // Allow 5 operations per second
+    limiter := NewRateLimiter(5, time.Second)
+    defer limiter.Stop()
+    
+    fmt.Println("=== Rate Limiting Demo ===")
+    
+    // Attempt rapid operations
+    for i := 1; i <= 10; i++ {
+        start := time.Now()
+        
+        if limiter.Allow() {
+            duration := time.Since(start)
+            fmt.Printf("Operation %d: ALLOWED (waited %v)\n", i, duration)
+        } else {
+            fmt.Printf("Operation %d: RATE LIMITED\n", i)
+            
+            // Wait for token
+            limiter.Wait()
+            duration := time.Since(start)
+            fmt.Printf("Operation %d: ALLOWED after wait (%v)\n", i, duration)
+        }
+    }
+}
+```
+
+### 2. Work Pool with Dynamic Sizing
+
+```go
+type WorkPool struct {
+    jobs        chan Job
+    results     chan Result
+    workers     chan chan Job
+    workerCount int
+    quit        chan bool
+}
+
+type Job struct {
+    ID       int
+    Data     interface{}
+    Process  func(interface{}) interface{}
+}
+
+type Result struct {
+    JobID  int
+    Result interface{}
+    Error  error
+}
+
+func NewWorkPool(maxWorkers int, jobBufferSize int) *WorkPool {
+    return &WorkPool{
+        jobs:        make(chan Job, jobBufferSize),
+        results:     make(chan Result, jobBufferSize),
+        workers:     make(chan chan Job, maxWorkers),
+        workerCount: 0,
+        quit:        make(chan bool),
+    }
+}
+
+func (wp *WorkPool) Start() {
+    go wp.dispatch()
+}
+
+func (wp *WorkPool) dispatch() {
+    for {
+        select {
+        case job := <-wp.jobs:
+            // Get available worker
+            jobChannel := <-wp.workers
+            
+            // Send job to worker
+            go func(job Job, jobChan chan Job) {
+                jobChan <- job
+            }(job, jobChannel)
+            
+        case <-wp.quit:
+            return
+        }
+    }
+}
+
+func (wp *WorkPool) AddWorker() {
+    wp.workerCount++
+    workerID := wp.workerCount
+    
+    jobChannel := make(chan Job)
+    
+    go func() {
+        fmt.Printf("Worker %d: Started\n", workerID)
+        
+        for {
+            // Register this worker
+            wp.workers <- jobChannel
+            
+            select {
+            case job := <-jobChannel:
+                fmt.Printf("Worker %d: Processing job %d\n", workerID, job.ID)
+                
+                result := Result{JobID: job.ID}
+                
+                if job.Process != nil {
+                    result.Result = job.Process(job.Data)
+                } else {
+                    result.Error = fmt.Errorf("no processor for job %d", job.ID)
+                }
+                
+                wp.results <- result
+                
+            case <-wp.quit:
+                fmt.Printf("Worker %d: Stopping\n", workerID)
+                return
+            }
+        }
+    }()
+}
+
+func (wp *WorkPool) Submit(job Job) {
+    wp.jobs <- job
+}
+
+func (wp *WorkPool) Results() <-chan Result {
+    return wp.results
+}
+
+func (wp *WorkPool) Stop() {
+    close(wp.quit)
+    close(wp.jobs)
+    close(wp.results)
+}
+
+func demonstrateWorkPool() {
+    pool := NewWorkPool(3, 20)
+    pool.Start()
+    
+    // Add initial workers
+    for i := 0; i < 2; i++ {
+        pool.AddWorker()
+    }
+    
+    // Submit jobs
+    go func() {
+        for i := 1; i <= 10; i++ {
+            job := Job{
+                ID:   i,
+                Data: fmt.Sprintf("data-%d", i),
+                Process: func(data interface{}) interface{} {
+                    // Simulate work
+                    time.Sleep(time.Duration(rand.Intn(500)) * time.Millisecond)
+                    return fmt.Sprintf("processed-%s", data)
+                },
+            }
+            
+            fmt.Printf("Submitting job %d\n", i)
+            pool.Submit(job)
+            
+            // Add more workers if queue is getting full
+            if len(pool.jobs) > 5 && pool.workerCount < 5 {
+                fmt.Println("Queue getting full, adding worker")
+                pool.AddWorker()
+            }
+        }
+    }()
+    
+    // Collect results
+    go func() {
+        processedCount := 0
+        for result := range pool.Results() {
+            processedCount++
+            if result.Error != nil {
+                fmt.Printf("Job %d failed: %v\n", result.JobID, result.Error)
+            } else {
+                fmt.Printf("Job %d completed: %v\n", result.JobID, result.Result)
+            }
+            
+            if processedCount >= 10 {
+                break
+            }
+        }
+    }()
+    
+    time.Sleep(3 * time.Second)
+    pool.Stop()
+}
+```
+
+### 3. Event Bus with Topic-based Routing
+
+```go
+type EventBus struct {
+    subscribers map[string][]chan Event
+    eventQueue  chan Event
+    mu          sync.RWMutex
+    quit        chan struct{}
+}
+
+type Event struct {
+    Topic     string
+    Payload   interface{}
+    Timestamp time.Time
+}
+
+func NewEventBus(queueSize int) *EventBus {
+    eb := &EventBus{
+        subscribers: make(map[string][]chan Event),
+        eventQueue:  make(chan Event, queueSize),
+        quit:        make(chan struct{}),
+    }
+    
+    go eb.processEvents()
+    return eb
+}
+
+func (eb *EventBus) processEvents() {
+    for {
+        select {
+        case event := <-eb.eventQueue:
+            eb.distributeEvent(event)
+        case <-eb.quit:
+            return
+        }
+    }
+}
+
+func (eb *EventBus) distributeEvent(event Event) {
+    eb.mu.RLock()
+    subscribers := eb.subscribers[event.Topic]
+    eb.mu.RUnlock()
+    
+    for _, subscriber := range subscribers {
+        select {
+        case subscriber <- event:
+            // Event delivered
+        default:
+            // Subscriber's buffer full, skip
+            fmt.Printf("Warning: Dropped event for topic %s (subscriber buffer full)\n", 
+                event.Topic)
+        }
+    }
+}
+
+func (eb *EventBus) Subscribe(topic string, bufferSize int) <-chan Event {
+    eb.mu.Lock()
+    defer eb.mu.Unlock()
+    
+    eventChan := make(chan Event, bufferSize)
+    eb.subscribers[topic] = append(eb.subscribers[topic], eventChan)
+    
+    return eventChan
+}
+
+func (eb *EventBus) Publish(topic string, payload interface{}) {
+    event := Event{
+        Topic:     topic,
+        Payload:   payload,
+        Timestamp: time.Now(),
+    }
+    
+    select {
+    case eb.eventQueue <- event:
+        // Event queued
+    default:
+        fmt.Printf("Warning: Event bus queue full, dropping event for topic %s\n", topic)
+    }
+}
+
+func (eb *EventBus) Stop() {
+    close(eb.quit)
+    close(eb.eventQueue)
+    
+    eb.mu.Lock()
+    defer eb.mu.Unlock()
+    
+    // Close all subscriber channels
+    for topic, subscribers := range eb.subscribers {
+        for _, ch := range subscribers {
+            close(ch)
+        }
+        fmt.Printf("Closed %d subscribers for topic %s\n", len(subscribers), topic)
+    }
+}
+
+func demonstrateEventBus() {
+    bus := NewEventBus(100)
+    defer bus.Stop()
+    
+    // Subscribe to different topics
+    newsSubscriber := bus.Subscribe("news", 10)
+    sportsSubscriber := bus.Subscribe("sports", 5)
+    weatherSubscriber := bus.Subscribe("weather", 3)
+    
+    // Multi-topic subscriber
+    allTopicsSubscriber := bus.Subscribe("news", 20)
+    
+    // Start subscribers
+    go func() {
+        for event := range newsSubscriber {
+            fmt.Printf("News Subscriber: %v at %v\n", 
+                event.Payload, event.Timestamp.Format("15:04:05"))
+        }
+    }()
+    
+    go func() {
+        for event := range sportsSubscriber {
+            fmt.Printf("Sports Subscriber: %v at %v\n", 
+                event.Payload, event.Timestamp.Format("15:04:05"))
+        }
+    }()
+    
+    go func() {
+        for event := range weatherSubscriber {
+            fmt.Printf("Weather Subscriber: %v at %v\n", 
+                event.Payload, event.Timestamp.Format("15:04:05"))
+            
+            // Slow subscriber
+            time.Sleep(200 * time.Millisecond)
+        }
+    }()
+    
+    go func() {
+        for event := range allTopicsSubscriber {
+            fmt.Printf("All Topics Subscriber: [%s] %v\n", 
+                event.Topic, event.Payload)
+        }
+    }()
+    
+    // Publish events
+    topics := []string{"news", "sports", "weather"}
+    
+    for i := 1; i <= 20; i++ {
+        topic := topics[rand.Intn(len(topics))]
+        payload := fmt.Sprintf("%s item %d", topic, i)
+        
+        bus.Publish(topic, payload)
+        time.Sleep(100 * time.Millisecond)
+    }
+    
+    time.Sleep(2 * time.Second)
+}
+```
+
+### 4. Buffered Pipeline with Load Balancing
+
+```go
+func demonstrateBufferedPipeline() {
+    const numWorkers = 3
+    const bufferSize = 10
+    
+    // Pipeline stages
+    input := make(chan int, bufferSize)
+    processed := make(chan string, bufferSize)
+    output := make(chan string, bufferSize)
+    
+    // Stage 1: Input generator
+    go func() {
+        defer close(input)
+        for i := 1; i <= 20; i++ {
+            fmt.Printf("Generator: Producing %d\n", i)
+            input <- i
+            time.Sleep(50 * time.Millisecond)
+        }
+        fmt.Println("Generator: Finished")
+    }()
+    
+    // Stage 2: Processing workers (load balanced)
+    var wg sync.WaitGroup
+    for workerID := 1; workerID <= numWorkers; workerID++ {
+        wg.Add(1)
+        go func(id int) {
+            defer wg.Done()
+            for value := range input {
+                fmt.Printf("Worker %d: Processing %d\n", id, value)
+                
+                // Variable processing time
+                processTime := time.Duration(rand.Intn(200)) * time.Millisecond
+                time.Sleep(processTime)
+                
+                result := fmt.Sprintf("worker-%d-processed-%d", id, value)
+                processed <- result
+                
+                fmt.Printf("Worker %d: Completed %d (took %v)\n", id, value, processTime)
+            }
+            fmt.Printf("Worker %d: Finished\n", id)
+        }(workerID)
+    }
+    
+    // Close processed channel when all workers finish
+    go func() {
+        wg.Wait()
+        close(processed)
+    }()
+    
+    // Stage 3: Output formatter
+    go func() {
+        defer close(output)
+        for result := range processed {
+            formatted := fmt.Sprintf("FORMATTED: %s", strings.ToUpper(result))
+            output <- formatted
+            fmt.Printf("Formatter: %s\n", formatted)
+        }
+        fmt.Println("Formatter: Finished")
+    }()
+    
+    // Final consumer
+    count := 0
+    for finalResult := range output {
+        count++
+        fmt.Printf("Final Output #%d: %s\n", count, finalResult)
+    }
+    
+    fmt.Printf("Pipeline completed: %d items processed\n", count)
+}
+```
+
+## Performance Optimization Strategies
+
+### 1. Buffer Size Tuning
+
+```go
+func benchmarkBufferSizes() {
+    sizes := []int{1, 10, 50, 100, 500, 1000}
+    itemCount := 10000
+    
+    fmt.Println("=== Buffer Size Performance Comparison ===")
+    
+    for _, size := range sizes {
+        start := time.Now()
+        
+        ch := make(chan int, size)
+        
+        // Producer
+        go func() {
+            defer close(ch)
+            for i := 0; i < itemCount; i++ {
+                ch <- i
+            }
+        }()
+        
+        // Consumer
+        count := 0
+        for range ch {
+            count++
+        }
+        
+        duration := time.Since(start)
+        throughput := float64(count) / duration.Seconds()
+        
+        fmt.Printf("Buffer size %4d: %v (%.0f items/sec)\n", 
+            size, duration, throughput)
+    }
+}
+```
+
+### 2. Memory-Efficient Message Pooling
+
+```go
+type MessagePool struct {
+    pool chan *Message
+}
+
+func NewMessagePool(size int) *MessagePool {
+    mp := &MessagePool{
+        pool: make(chan *Message, size),
+    }
+    
+    // Pre-populate pool
+    for i := 0; i < size; i++ {
+        mp.pool <- &Message{}
+    }
+    
+    return mp
+}
+
+func (mp *MessagePool) Get() *Message {
+    select {
+    case msg := <-mp.pool:
+        return msg
+    default:
+        // Pool empty, create new message
+        return &Message{}
+    }
+}
+
+func (mp *MessagePool) Put(msg *Message) {
+    // Reset message
+    msg.ID = 0
+    msg.Data = ""
+    msg.Timestamp = time.Time{}
+    
+    select {
+    case mp.pool <- msg:
+        // Returned to pool
+    default:
+        // Pool full, let GC handle it
+    }
+}
+
+type Message struct {
+    ID        int
+    Data      string
+    Timestamp time.Time
+}
+
+func demonstrateMessagePooling() {
+    pool := NewMessagePool(100)
+    processChannel := make(chan *Message, 50)
+    
+    var allocCount, poolCount int64
+    
+    // Producer using pool
+    go func() {
+        defer close(processChannel)
+        for i := 1; i <= 1000; i++ {
+            msg := pool.Get()
+            
+            if msg.ID == 0 { // New allocation
+                atomic.AddInt64(&allocCount, 1)
+            } else { // Reused from pool
+                atomic.AddInt64(&poolCount, 1)
+            }
+            
+            msg.ID = i
+            msg.Data = fmt.Sprintf("data-%d", i)
+            msg.Timestamp = time.Now()
+            
+            processChannel <- msg
+        }
+    }()
+    
+    // Consumer returning to pool
+    processed := 0
+    for msg := range processChannel {
+        processed++
+        
+        // Process message
+        _ = strings.ToUpper(msg.Data)
+        
+        // Return to pool
+        pool.Put(msg)
+    }
+    
+    fmt.Printf("Processed %d messages\n", processed)
+    fmt.Printf("New allocations: %d\n", allocCount)
+    fmt.Printf("Pool reuses: %d\n", poolCount)
+    fmt.Printf("Pool efficiency: %.2f%%\n", 
+        float64(poolCount)/float64(allocCount+poolCount)*100)
+}
+```
+
+### 3. Adaptive Buffer Management
+
+```go
+type AdaptiveChannel struct {
+    ch          chan interface{}
+    capacity    int
+    maxCapacity int
+    minCapacity int
+    
+    sendBlocks   int64
+    receiveWaits int64
+    
+    mu sync.RWMutex
+}
+
+func NewAdaptiveChannel(initialCapacity, minCap, maxCap int) *AdaptiveChannel {
+    return &AdaptiveChannel{
+        ch:          make(chan interface{}, initialCapacity),
+        capacity:    initialCapacity,
+        maxCapacity: maxCap,
+        minCapacity: minCap,
+    }
+}
+
+func (ac *AdaptiveChannel) Send(value interface{}) {
+    select {
+    case ac.ch <- value:
+        // Non-blocking send
+    default:
+        // Would block, consider increasing capacity
+        atomic.AddInt64(&ac.sendBlocks, 1)
+        ac.considerResize()
+        
+        ac.ch <- value // Blocking send
+    }
+}
+
+func (ac *AdaptiveChannel) Receive() interface{} {
+    select {
+    case value := <-ac.ch:
+        return value
+    default:
+        // No data available, consider decreasing capacity
+        atomic.AddInt64(&ac.receiveWaits, 1)
+        ac.considerResize()
+        
+        return <-ac.ch // Blocking receive
+    }
+}
+
+func (ac *AdaptiveChannel) considerResize() {
+    ac.mu.Lock()
+    defer ac.mu.Unlock()
+    
+    sendBlocks := atomic.LoadInt64(&ac.sendBlocks)
+    receiveWaits := atomic.LoadInt64(&ac.receiveWaits)
+    
+    // Resize logic based on blocking patterns
+    if sendBlocks > receiveWaits*2 && ac.capacity < ac.maxCapacity {
+        // More send blocks than receive waits, increase capacity
+        newCapacity := min(ac.capacity*2, ac.maxCapacity)
+        ac.resize(newCapacity)
+        fmt.Printf("Adaptive: Increased capacity to %d (sends blocked: %d)\n", 
+            newCapacity, sendBlocks)
+    } else if receiveWaits > sendBlocks*2 && ac.capacity > ac.minCapacity {
+        // More receive waits than send blocks, decrease capacity
+        newCapacity := max(ac.capacity/2, ac.minCapacity)
+        ac.resize(newCapacity)
+        fmt.Printf("Adaptive: Decreased capacity to %d (receives waited: %d)\n", 
+            newCapacity, receiveWaits)
+    }
+    
+    // Reset counters
+    atomic.StoreInt64(&ac.sendBlocks, 0)
+    atomic.StoreInt64(&ac.receiveWaits, 0)
+}
+
+func (ac *AdaptiveChannel) resize(newCapacity int) {
+    if newCapacity == ac.capacity {
+        return
+    }
+    
+    oldCh := ac.ch
+    newCh := make(chan interface{}, newCapacity)
+    
+    // Transfer existing items
+    close(oldCh)
+    for item := range oldCh {
+        select {
+        case newCh <- item:
+        default:
+            // New buffer smaller, some items lost (shouldn't happen in practice)
+            fmt.Println("Warning: Lost item during resize")
+        }
+    }
+    
+    ac.ch = newCh
+    ac.capacity = newCapacity
+}
+
+func (ac *AdaptiveChannel) Close() {
+    ac.mu.Lock()
+    defer ac.mu.Unlock()
+    close(ac.ch)
+}
+
+func min(a, b int) int {
+    if a < b { return a }
+    return b
+}
+
+func max(a, b int) int {
+    if a > b { return a }
+    return b
+}
+
+func demonstrateAdaptiveChannel() {
+    ac := NewAdaptiveChannel(2, 1, 20)
+    done := make(chan bool, 2)
+    
+    // Variable rate producer
+    go func() {
+        defer func() { done <- true }()
+        
+        for i := 1; i <= 50; i++ {
+            ac.Send(fmt.Sprintf("item-%d", i))
+            
+            // Variable production rate
+            if i < 20 {
+                time.Sleep(10 * time.Millisecond) // Fast initially
+            } else if i < 40 {
+                time.Sleep(100 * time.Millisecond) // Then slow
+            } else {
+                time.Sleep(5 * time.Millisecond) // Fast again
+            }
+        }
+        ac.Close()
+    }()
+    
+    // Variable rate consumer
+    go func() {
+        defer func() { done <- true }()
+        
+        count := 0
+        for {
+            item := ac.Receive()
+            if item == nil {
+                break // Channel closed and empty
+            }
+            
+            count++
+            fmt.Printf("Received: %v (count: %d)\n", item, count)
+            
+            // Variable consumption rate
+            if count < 15 {
+                time.Sleep(50 * time.Millisecond) // Slow initially
+            } else if count < 35 {
+                time.Sleep(5 * time.Millisecond) // Then fast
+            } else {
+                time.Sleep(20 * time.Millisecond) // Medium
+            }
+        }
+        
+        fmt.Printf("Consumer finished: processed %d items\n", count)
+    }()
+    
+    // Wait for both to complete
+    <-done
+    <-done
+}
+```
+
+## Use Cases and When to Choose Buffered Channels
+
+### Decision Matrix: Buffered vs Unbuffered
+
+| Scenario | Buffered | Unbuffered | Reasoning |
+|----------|----------|------------|-----------|
+| Producer faster than consumer | ✅ | ❌ | Buffer prevents blocking |
+| Strict synchronization needed | ❌ | ✅ | Unbuffered guarantees sync |
+| Event notification | ✅ | ❌ | Events can be queued |
+| Request-response pattern | ❌ | ✅ | Synchronous communication |
+| Rate limiting | ✅ | ❌ | Buffer acts as token bucket |
+| Pipeline with backpressure | ✅ | ❌ | Controlled flow through stages |
+| Memory is constrained | ❌ | ✅ | Unbuffered has minimal overhead |
+| High throughput required | ✅ | ❌ | Reduces blocking overhead |
+
+### Practical Decision Framework
+
+```go
+func channelDecisionExample() {
+    fmt.Println("=== Channel Selection Examples ===")
+    
+    // Example 1: High-frequency logging (use buffered)
+    logChannel := make(chan string, 1000) // Large buffer for bursty logs
+    
+    go func() {
+        defer close(logChannel)
+        // Simulate burst of log messages
+        for i := 0; i < 100; i++ {
+            logChannel <- fmt.Sprintf("Log entry %d", i)
+        }
+    }()
+    
+    // Log processor can handle at its own pace
+    go func() {
+        for logMsg := range logChannel {
+            // Simulate log writing (slower than generation)
+            time.Sleep(10 * time.Millisecond)
+            fmt.Printf("Logged: %s\n", logMsg)
+        }
+    }()
+    
+    // Example 2: Synchronous handshake (use unbuffered)
+    handshake := make(chan bool) // Unbuffered for synchronization
+    
+    go func() {
+        fmt.Println("Process A: Preparing...")
+        time.Sleep(100 * time.Millisecond)
+        handshake <- true // Blocks until B receives
+        fmt.Println("Process A: Handshake complete")
+    }()
+    
+    go func() {
+        fmt.Println("Process B: Waiting...")
+        <-handshake // Synchronizes with A
+        fmt.Println("Process B: Handshake received")
+    }()
+    
+    time.Sleep(500 * time.Millisecond)
+    
+    // Example 3: Work distribution (use buffered)
+    jobs := make(chan int, 20) // Buffer allows job queuing
+    
+    // Job producer
+    go func() {
+        defer close(jobs)
+        for i := 1; i <= 10; i++ {
+            jobs <- i // Non-blocking sends when buffer has space
+        }
+    }()
+    
+    // Multiple workers can take jobs at their own pace
+    for w := 1; w <= 3; w++ {
+        go func(workerID int) {
+            for job := range jobs {
+                fmt.Printf("Worker %d: Processing job %d\n", workerID, job)
+                time.Sleep(50 * time.Millisecond)
+            }
+        }(w)
+    }
+    
+    time.Sleep(1 * time.Second)
+}
+```
+
+### Anti-patterns and Common Mistakes
+
+```go
+func demonstrateAntipatterns() {
+    fmt.Println("=== Common Anti-patterns ===")
+    
+    // ANTI-PATTERN 1: Oversized buffers
+    func() {
+        fmt.Println("Anti-pattern 1: Oversized buffer")
+        
+        // Don't do this - wastes memory
+        oversized := make(chan int, 10000) // Way too big for actual usage
+        
+        go func() {
+            defer close(oversized)
+            for i := 0; i < 5; i++ { // Only sending 5 items
+                oversized <- i
+            }
+        }()
+        
+        for item := range oversized {
+            fmt.Printf("Received: %d (buffer cap: %d, len: %d)\n", 
+                item, cap(oversized), len(oversized))
+        }
+    }()
+    
+    // ANTI-PATTERN 2: Using buffered channels for synchronization
+    func() {
+        fmt.Println("\nAnti-pattern 2: Wrong channel type for sync")
+        
+        // Don't use buffered channels for synchronization
+        sync := make(chan bool, 1) // Buffer allows race condition
+        data := 0
+        
+        go func() {
+            data = 42
+            sync <- true // Non-blocking send
+            fmt.Println("Goroutine: Data set, signal sent")
+        }()
+        
+        // Race condition - might read data before it's set
+        time.Sleep(1 * time.Millisecond) // Simulate timing
+        select {
+        case <-sync:
+            fmt.Printf("Main: Received signal, data = %d\n", data)
+        default:
+            fmt.Println("Main: No signal yet")
+        }
+    }()
+    
+    // CORRECT PATTERN: Use unbuffered for synchronization
+    func() {
+        fmt.Println("\nCorrect pattern: Unbuffered for sync")
+        
+        sync := make(chan bool) // Unbuffered ensures synchronization
+        data := 0
+        
+        go func() {
+            data = 42
+            sync <- true // Blocks until main receives
+            fmt.Println("Goroutine: Data set and confirmed received")
+        }()
+        
+        <-sync // Synchronized receive
+        fmt.Printf("Main: Data guaranteed set, data = %d\n", data)
+    }()
+    
+    // ANTI-PATTERN 3: Not closing channels
+    func() {
+        fmt.Println("\nAnti-pattern 3: Not closing channels")
+        
+        unclosed := make(chan int, 5)
+        
+        go func() {
+            for i := 0; i < 3; i++ {
+                unclosed <- i
+            }
+            // Missing close(unclosed) - receivers will block forever
+        }()
+        
+        // This would block forever waiting for close
+        // for item := range unclosed { ... }
+        
+        // Instead, use timeout or other termination signal
+        timeout := time.NewTimer(100 * time.Millisecond)
+        
+        for i := 0; i < 3; i++ {
+            select {
+            case item := <-unclosed:
+                fmt.Printf("Received: %d\n", item)
+            case <-timeout.C:
+                fmt.Println("Timeout - channel not closed properly")
+                return
+            }
+        }
+    }()
+}
+```
+
+## Monitoring and Debugging Buffered Channels
+
+### Channel State Monitoring
+
+```go
+type ChannelMonitor struct {
+    name     string
+    ch       chan interface{}
+    stats    *ChannelStats
+    ticker   *time.Ticker
+    done     chan struct{}
+}
+
+type ChannelStats struct {
+    MaxLength    int
+    TotalSent    int64
+    TotalReceived int64
+    BlockingEvents int64
+    mu           sync.RWMutex
+}
+
+func NewChannelMonitor(name string, ch chan interface{}) *ChannelMonitor {
+    monitor := &ChannelMonitor{
+        name:   name,
+        ch:     ch,
+        stats:  &ChannelStats{},
+        ticker: time.NewTicker(1 * time.Second),
+        done:   make(chan struct{}),
+    }
+    
+    go monitor.run()
+    return monitor
+}
+
+func (cm *ChannelMonitor) run() {
+    for {
+        select {
+        case <-cm.ticker.C:
+            cm.logStats()
+        case <-cm.done:
+            cm.ticker.Stop()
+            return
+        }
+    }
+}
+
+func (cm *ChannelMonitor) logStats() {
+    cm.stats.mu.RLock()
+    currentLen := len(cm.ch)
+    currentCap := cap(cm.ch)
+    
+    if currentLen > cm.stats.MaxLength {
+        cm.stats.MaxLength = currentLen
+    }
+    
+    utilization := float64(currentLen) / float64(currentCap) * 100
+    
+    fmt.Printf("[%s] Len: %d/%d (%.1f%%), Max: %d, Sent: %d, Received: %d, Blocks: %d\n",
+        cm.name, currentLen, currentCap, utilization,
+        cm.stats.MaxLength, cm.stats.TotalSent, cm.stats.TotalReceived,
+        cm.stats.BlockingEvents)
+    
+    cm.stats.mu.RUnlock()
+}
+
+func (cm *ChannelMonitor) RecordSend(blocking bool) {
+    cm.stats.mu.Lock()
+    defer cm.stats.mu.Unlock()
+    
+    cm.stats.TotalSent++
+    if blocking {
+        cm.stats.BlockingEvents++
+    }
+}
+
+func (cm *ChannelMonitor) RecordReceive() {
+    cm.stats.mu.Lock()
+    defer cm.stats.mu.Unlock()
+    
+    cm.stats.TotalReceived++
+}
+
+func (cm *ChannelMonitor) Stop() {
+    close(cm.done)
+}
+
+func demonstrateChannelMonitoring() {
+    ch := make(chan interface{}, 10)
+    monitor := NewChannelMonitor("WorkQueue", ch)
+    defer monitor.Stop()
+    
+    // Producer with variable rate
+    go func() {
+        defer close(ch)
+        for i := 1; i <= 50; i++ {
+            start := time.Now()
+            
+            select {
+            case ch <- fmt.Sprintf("item-%d", i):
+                monitor.RecordSend(false)
+            default:
+                // Channel full, will block
+                ch <- fmt.Sprintf("item-%d", i)
+                monitor.RecordSend(true)
+            }
+            
+            if time.Since(start) > time.Millisecond {
+                fmt.Printf("Send blocked for %v\n", time.Since(start))
+            }
+            
+            // Variable rate
+            delay := time.Duration(rand.Intn(200)) * time.Millisecond
+            time.Sleep(delay)
+        }
+    }()
+    
+    // Consumer with variable processing time
+    go func() {
+        for item := range ch {
+            monitor.RecordReceive()
+            
+            fmt.Printf("Processing: %v\n", item)
+            
+            // Variable processing time
+            processTime := time.Duration(rand.Intn(300)) * time.Millisecond
+            time.Sleep(processTime)
+        }
+    }()
+    
+    time.Sleep(15 * time.Second)
+}
+```
+
+### Memory Leak Detection
+
+```go
+func demonstrateLeakDetection() {
+    fmt.Println("=== Channel Leak Detection ===")
+    
+    // Simulate channel leak
+    leakyChannels := make([]chan string, 0)
+    
+    // Create channels that are never closed or fully consumed
+    for i := 0; i < 100; i++ {
+        ch := make(chan string, 10)
+        
+        // Send some data
+        go func(ch chan string, id int) {
+            for j := 0; j < 5; j++ {
+                ch <- fmt.Sprintf("data-%d-%d", id, j)
+            }
+            // NOT closing the channel - potential leak
+        }(ch, i)
+        
+        leakyChannels = append(leakyChannels, ch)
+    }
+    
+    // Monitor memory usage
+    var m1, m2 runtime.MemStats
+    runtime.GC()
+    runtime.ReadMemStats(&m1)
+    
+    // Simulate time passing
+    time.Sleep(100 * time.Millisecond)
+    
+    runtime.GC()
+    runtime.ReadMemStats(&m2)
+    
+    fmt.Printf("Memory before: %d KB\n", m1.Alloc/1024)
+    fmt.Printf("Memory after: %d KB\n", m2.Alloc/1024)
+    fmt.Printf("Memory growth: %d KB\n", (m2.Alloc-m1.Alloc)/1024)
+    fmt.Printf("Goroutines: %d\n", runtime.NumGoroutine())
+    
+    // Cleanup to prevent actual leak
+    for _, ch := range leakyChannels {
+        // Drain channel
+        for len(ch) > 0 {
+            <-ch
+        }
+        // Now safe to let GC handle it
+    }
+    
+    runtime.GC()
+    var m3 runtime.MemStats
+    runtime.ReadMemStats(&m3)
+    fmt.Printf("Memory after cleanup: %d KB\n", m3.Alloc/1024)
+}
+```
+
+### Deadlock Detection Patterns
+
+```go
+func demonstrateDeadlockDetection() {
+    fmt.Println("=== Deadlock Detection Patterns ===")
+    
+    // Pattern 1: Timeout-based detection
+    func() {
+        fmt.Println("Pattern 1: Timeout detection")
+        
+        ch1 := make(chan int, 1)
+        ch2 := make(chan int, 1)
+        
+        // This could potentially deadlock
+        go func() {
+            ch1 <- 1
+            val := <-ch2
+            fmt.Printf("Goroutine 1 received: %d\n", val)
+        }()
+        
+        go func() {
+            // Simulate potential deadlock by not sending to ch2
+            time.Sleep(200 * time.Millisecond)
+            val := <-ch1
+            fmt.Printf("Goroutine 2 received: %d\n", val)
+            // ch2 <- 2 // Commented out to simulate deadlock
+        }()
+        
+        // Deadlock detection with timeout
+        select {
+        case <-time.After(500 * time.Millisecond):
+            fmt.Println("Potential deadlock detected - timeout reached")
+        }
+    }()
+    
+    // Pattern 2: Progress monitoring
+    func() {
+        fmt.Println("\nPattern 2: Progress monitoring")
+        
+        progress := make(chan string, 10)
+        done := make(chan bool)
+        
+        // Worker that might get stuck
+        go func() {
+            defer func() { done <- true }()
+            
+            for i := 0; i < 5; i++ {
+                progress <- fmt.Sprintf("Step %d", i)
+                
+                if i == 2 {
+                    // Simulate getting stuck
+                    time.Sleep(2 * time.Second)
+                } else {
+                    time.Sleep(100 * time.Millisecond)
+                }
+            }
+        }()
+        
+        // Progress monitor
+        lastProgress := time.Now()
+        progressTicker := time.NewTicker(500 * time.Millisecond)
+        defer progressTicker.Stop()
+        
+        for {
+            select {
+            case msg := <-progress:
+                fmt.Printf("Progress: %s\n", msg)
+                lastProgress = time.Now()
+                
+            case <-progressTicker.C:
+                if time.Since(lastProgress) > 1*time.Second {
+                    fmt.Println("WARNING: No progress for over 1 second")
+                }
+                
+            case <-done:
+                fmt.Println("Work completed")
+                return
+                
+            case <-time.After(3 * time.Second):
+                fmt.Println("Work timed out - possible deadlock")
+                return
+            }
+        }
+    }()
+}
+```
+
+## Best Practices for Buffered Channels
+
+### 1. Buffer Size Selection Guidelines
+
+```go
+func demonstrateBufferSizing() {
+    fmt.Println("=== Buffer Sizing Guidelines ===")
+    
+    // Guideline 1: Match expected burst size
+    func() {
+        fmt.Println("Guideline 1: Burst handling")
+        
+        // Web request handling - expect bursts of 50 requests
+        requestQueue := make(chan *http.Request, 50)
+        
+        // Simulate request bursts
+        go func() {
+            defer close(requestQueue)
+            
+            // Normal load
+            for i := 0; i < 10; i++ {
+                req, _ := http.NewRequest("GET", "/", nil)
+                requestQueue <- req
+                time.Sleep(100 * time.Millisecond)
+            }
+            
+            // Burst load
+            fmt.Println("Burst load starting...")
+            for i := 0; i < 30; i++ {
+                req, _ := http.NewRequest("GET", "/", nil)
+                select {
+                case requestQueue <- req:
+                    // Request queued
+                default:
+                    fmt.Printf("Request %d dropped - queue full\n", i)
+                }
+            }
+        }()
+        
+        // Request processor
+        processed := 0
+        for req := range requestQueue {
+            processed++
+            fmt.Printf("Processing request %d: %s\n", processed, req.URL.Path)
+            time.Sleep(50 * time.Millisecond) // Simulate processing
+        }
+    }()
+    
+    // Guideline 2: Producer-consumer rate matching
+    func() {
+        fmt.Println("\nGuideline 2: Rate matching")
+        
+        // Producer: 10 items/second, Consumer: 8 items/second
+        // Buffer should handle 2 items/second * reasonable time window
+        buffer := make(chan int, 20) // 10 second buffer
+        
+        go func() {
+            defer close(buffer)
+            ticker := time.NewTicker(100 * time.Millisecond) // 10/sec
+            defer ticker.Stop()
+            
+            for i := 1; i <= 100; i++ {
+                <-ticker.C
+                buffer <- i
+            }
+        }()
+        
+        // Slower consumer
+        for item := range buffer {
+            fmt.Printf("Consumed: %d (buffer len: %d)\n", item, len(buffer))
+            time.Sleep(125 * time.Millisecond) // 8/sec
+        }
+    }()
+}
+```
+
+### 2. Resource Management
+
+```go
+func demonstrateResourceManagement() {
+    fmt.Println("=== Resource Management ===")
+    
+    // Pattern 1: Bounded resource pool
+    type Resource struct {
+        ID   int
+        Data []byte
+    }
+    
+    // Create resource pool
+    resourcePool := make(chan *Resource, 5)
+    
+    // Initialize pool
+    for i := 1; i <= 5; i++ {
+        resource := &Resource{
+            ID:   i,
+            Data: make([]byte, 1024), // 1KB resource
+        }
+        resourcePool <- resource
+    }
+    
+    // Resource users
+    var wg sync.WaitGroup
+    for worker := 1; worker <= 3; worker++ {
+        wg.Add(1)
+        go func(workerID int) {
+            defer wg.Done()
+            
+            for task := 1; task <= 5; task++ {
+                // Acquire resource
+                resource := <-resourcePool
+                fmt.Printf("Worker %d acquired resource %d for task %d\n",
+                    workerID, resource.ID, task)
+                
+                // Use resource
+                time.Sleep(time.Duration(rand.Intn(200)) * time.Millisecond)
+                
+                // Return resource
+                resourcePool <- resource
+                fmt.Printf("Worker %d returned resource %d\n",
+                    workerID, resource.ID)
+            }
+        }(worker)
+    }
+    
+    wg.Wait()
+    
+    // Cleanup - drain pool
+    close(resourcePool)
+    for resource := range resourcePool {
+        fmt.Printf("Cleaning up resource %d\n", resource.ID)
+    }
+}
+```
+
+### 3. Error Handling Patterns
+
+```go
+type Result struct {
+    Value interface{}
+    Error error
+}
+
+func demonstrateErrorHandling() {
+    fmt.Println("=== Error Handling Patterns ===")
+    
+    // Pattern 1: Error aggregation
+    requests := make(chan string, 10)
+    results := make(chan Result, 10)
+    
+    // Workers that might fail
+    for worker := 1; worker <= 3; worker++ {
+        go func(workerID int) {
+            for request := range requests {
+                var result Result
+                
+                // Simulate work that might fail
+                if rand.Float64() < 0.3 { // 30% failure rate
+                    result.Error = fmt.Errorf("worker %d failed processing %s",
+                        workerID, request)
+                } else {
+                    result.Value = fmt.Sprintf("worker-%d-processed-%s",
+                        workerID, request)
+                }
+                
+                results <- result
+            }
+        }(worker)
+    }
+    
+    // Send requests
+    go func() {
+        defer close(requests)
+        for i := 1; i <= 20; i++ {
+            requests <- fmt.Sprintf("request-%d", i)
+        }
+    }()
+    
+    // Collect results and errors
+    go func() {
+        defer close(results)
+        time.Sleep(2 * time.Second) // Wait for processing
+    }()
+    
+    var errors []error
+    var successes []string
+    
+    for result := range results {
+        if result.Error != nil {
+            errors = append(errors, result.Error)
+        } else {
+            successes = append(successes, result.Value.(string))
+        }
+    }
+    
+    fmt.Printf("Completed: %d successes, %d errors\n",
+        len(successes), len(errors))
+    
+    if len(errors) > 0 {
+        fmt.Println("Errors encountered:")
+        for _, err := range errors {
+            fmt.Printf("  - %v\n", err)
+        }
+    }
+}
+```
+
+## Summary
+
+Buffered channels provide asynchronous communication capabilities that enable:
+
+**Key Characteristics:**
+- Internal buffer with configurable capacity
+- Non-blocking sends when buffer has space
+- Non-blocking receives when buffer has data
+- FIFO ordering guarantees
+- Natural flow control and rate limiting
+
+**Primary Use Cases:**
+- Producer-consumer with different rates
+- Event queuing and notification systems
+- Work distribution and load balancing
+- Pipeline stages with buffering
+- Resource pooling and throttling
+
+**Performance Benefits:**
+- Reduced blocking and context switching
+- Higher throughput for async operations
+- Better resource utilization
+- Natural burst handling
+
+**Trade-offs:**
+- Increased memory usage
+- Weaker synchronization guarantees
+- Potential for message accumulation
+- More complex lifecycle management
+
+**Best Practices:**
+- Size buffers based on expected burst patterns
+- Monitor buffer utilization and blocking patterns
+- Implement proper cleanup and resource management
+- Use appropriate error handling patterns
+- Consider adaptive sizing for varying loads
+
+Understanding buffered channels is essential for building high-performance concurrent systems in Go. They provide the flexibility needed for asynchronous communication while maintaining Go's strong typing and safety guarantees.
+
+In the next chapter, we'll explore the **core differences** between buffered and unbuffered channels, providing detailed comparisons and guidance on choosing the right approach for different scenarios.
+
+---
+
+*This chapter provided comprehensive coverage of buffered channels, from theoretical foundations to advanced optimization techniques. The asynchronous nature of buffered channels makes them ideal for high-throughput systems and scenarios where decoupling producers from consumers is beneficial.*
