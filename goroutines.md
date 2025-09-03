@@ -1371,6 +1371,39 @@ func worker(id int, jobs <-chan int, results chan<- int) {
 - **Resource management**: Prevent system overload
 - **Scalability**: Easy to adjust number of workers
 
+**The Key Insight: Closing ≠ Destroying**
+
+When you call `close(jobs)`, you're not destroying the channel or removing it from memory. You're just signaling that **no more values will be sent** to it. The channel itself and any values already in it remain accessible.
+
+**How It Works in Your Code**
+
+Let's trace through the execution:
+
+```go
+// 1. Producer goroutine sends all jobs and closes the channel
+go func() {
+    for j := 1; j <= 9; j++ {
+        fmt.Println("Producer: Sent Job...", j)
+        jobs <- j  // Send job to channel
+    }
+    close(jobs)   // Signal no more jobs will be sent
+}()
+
+// 2. Worker goroutines are consuming from the channel
+for w := 1; w <= 3; w++ {
+    go worker(w, jobs, results)  // These started BEFORE the producer
+}
+```
+
+**What Happens When Channel is Closed**
+
+When the producer calls `close(jobs)`:
+
+1. **The channel is marked as "closed"** - no more values can be sent but doesn't destroy the channel.
+2. **Existing values in the channel remain** and can still be received
+3. **The `for job := range jobs` loop continues** until all values are consumed
+4. **When the channel is empty, the range loop automatically exits**
+
 #### 4.1.2 Worker Pool with Error Handling
 
 ```go
