@@ -3842,3 +3842,1871 @@ In the next chapter, we'll explore the **core differences** between buffered and
 ---
 
 *This chapter provided comprehensive coverage of buffered channels, from theoretical foundations to advanced optimization techniques. The asynchronous nature of buffered channels makes them ideal for high-throughput systems and scenarios where decoupling producers from consumers is beneficial.*
+
+---
+
+# Chapter 4: Core Differences Deep Dive
+
+## Introduction
+
+Having explored unbuffered and buffered channels individually, we now turn to a comprehensive comparison of their fundamental differences. This chapter provides a detailed analysis of how these two channel types differ in behavior, performance, use cases, and implementation characteristics. Understanding these differences is crucial for making informed architectural decisions in concurrent Go programs.
+
+## Theoretical Differences
+
+### Communication Models
+
+The fundamental difference between unbuffered and buffered channels lies in their communication models:
+
+#### Unbuffered Channels: Synchronous Communication
+```
+Sender ←→ Receiver (Direct synchronization)
+```
+
+#### Buffered Channels: Asynchronous Communication  
+```
+Sender → Buffer → Receiver (Indirect through buffer)
+```
+
+### Mathematical Properties Comparison
+
+| Property | Unbuffered | Buffered |
+|----------|------------|----------|
+| **Synchronization** | Always synchronous | Conditional synchronization |
+| **Capacity** | 0 | N > 0 |
+| **Send Blocking** | Always until receiver ready | Only when buffer full |
+| **Receive Blocking** | Always until sender ready | Only when buffer empty |
+| **Memory Model** | Strong happens-before | Weaker happens-before |
+| **Ordering** | Direct ordering | FIFO through buffer |
+
+### Formal Behavioral Specifications
+
+```go
+func demonstrateBehavioralDifferences() {
+    fmt.Println("=== Behavioral Differences Demonstration ===")
+    
+    // Test 1: Send behavior comparison
+    unbuffered := make(chan int)
+    buffered := make(chan int, 3)
+    
+    // Unbuffered send behavior
+    go func() {
+        fmt.Println("Unbuffered: About to send")
+        start := time.Now()
+        unbuffered <- 1
+        fmt.Printf("Unbuffered: Send completed after %v\n", time.Since(start))
+    }()
+    
+    // Buffered send behavior
+    go func() {
+        fmt.Println("Buffered: About to send")
+        start := time.Now()
+        buffered <- 1
+        fmt.Printf("Buffered: Send completed after %v\n", time.Since(start))
+    }()
+    
+    time.Sleep(100 * time.Millisecond) // Let senders attempt
+    
+    fmt.Println("Main: Receiving from unbuffered...")
+    <-unbuffered
+    
+    fmt.Println("Main: Receiving from buffered...")
+    <-buffered
+    
+    // Test 2: Multiple sends comparison
+    fmt.Println("\n=== Multiple Sends Test ===")
+    
+    // Reset channels
+    buffered2 := make(chan int, 2)
+    unbuffered2 := make(chan int)
+    
+    // Buffered: can send multiple without receiver
+    go func() {
+        fmt.Println("Buffered: Sending 3 items...")
+        for i := 1; i <= 3; i++ {
+            start := time.Now()
+            buffered2 <- i
+            fmt.Printf("Buffered: Sent %d after %v\n", i, time.Since(start))
+        }
+    }()
+    
+    // Unbuffered: each send blocks
+    go func() {
+        fmt.Println("Unbuffered: Sending 3 items...")
+        for i := 1; i <= 3; i++ {
+            start := time.Now()
+            unbuffered2 <- i
+            fmt.Printf("Unbuffered: Sent %d after %v\n", i, time.Since(start))
+        }
+    }()
+    
+    time.Sleep(100 * time.Millisecond) // Observe send patterns
+    
+    // Receive from both
+    fmt.Println("Receiving from buffered:")
+    for i := 0; i < 3; i++ {
+        fmt.Printf("  Received: %d\n", <-buffered2)
+        time.Sleep(50 * time.Millisecond)
+    }
+    
+    fmt.Println("Receiving from unbuffered:")
+    for i := 0; i < 3; i++ {
+        fmt.Printf("  Received: %d\n", <-unbuffered2)
+        time.Sleep(50 * time.Millisecond)
+    }
+}
+```
+
+## Synchronization Behavior Comparison
+
+### Happens-Before Relationships
+
+The memory ordering guarantees differ significantly between the two channel types:
+
+```go
+func demonstrateHappensBeforeComparison() {
+    fmt.Println("=== Happens-Before Relationships ===")
+    
+    var sharedData int
+    
+    // Test 1: Unbuffered channel synchronization
+    func() {
+        fmt.Println("Test 1: Unbuffered synchronization")
+        sync := make(chan bool)
+        sharedData = 0
+        
+        go func() {
+            sharedData = 42 // Write happens-before send
+            fmt.Println("Writer: Set data to 42")
+            sync <- true   // Send happens-before receive completes
+            fmt.Println("Writer: Send completed")
+        }()
+        
+        <-sync // Receive happens-after send
+        fmt.Printf("Reader: Data guaranteed to be %d\n", sharedData)
+    }()
+    
+    // Test 2: Buffered channel synchronization
+    func() {
+        fmt.Println("\nTest 2: Buffered synchronization")
+        sync := make(chan bool, 1)
+        sharedData = 0
+        
+        go func() {
+            sharedData = 84 // Write may not be visible immediately
+            fmt.Println("Writer: Set data to 84")
+            sync <- true   // Non-blocking send
+            fmt.Println("Writer: Send completed immediately")
+        }()
+        
+        time.Sleep(10 * time.Millisecond) // Small delay
+        
+        select {
+        case <-sync:
+            fmt.Printf("Reader: Data is %d (may or may not be visible)\n", sharedData)
+        default:
+            fmt.Println("Reader: No signal received yet")
+        }
+    }()
+    
+    // Test 3: Strong vs weak synchronization
+    func() {
+        fmt.Println("\nTest 3: Synchronization strength comparison")
+        
+        // Unbuffered: Strong synchronization
+        strongSync := make(chan struct{})
+        counter := 0
+        
+        for i := 0; i < 5; i++ {
+            go func(id int) {
+                counter++ // Race condition, but...
+                strongSync <- struct{}{} // Strong synchronization point
+                fmt.Printf("Strong sync: Goroutine %d completed\n", id)
+            }(i)
+        }
+        
+        for i := 0; i < 5; i++ {
+            <-strongSync // Each receive synchronizes with exactly one send
+        }
+        fmt.Printf("Strong sync final counter: %d\n", counter)
+        
+        // Buffered: Weaker synchronization
+        weakSync := make(chan struct{}, 5)
+        counter = 0
+        
+        for i := 0; i < 5; i++ {
+            go func(id int) {
+                counter++ // Race condition persists
+                weakSync <- struct{}{} // Weaker synchronization
+                fmt.Printf("Weak sync: Goroutine %d completed\n", id)
+            }(i)
+        }
+        
+        time.Sleep(50 * time.Millisecond)
+        fmt.Printf("Weak sync counter after sends: %d\n", counter)
+        
+        for i := 0; i < 5; i++ {
+            <-weakSync
+        }
+        fmt.Printf("Weak sync final counter: %d\n", counter)
+    }()
+}
+```
+
+### Coordination Patterns Comparison
+
+```go
+func demonstrateCoordinationPatterns() {
+    fmt.Println("=== Coordination Patterns ===")
+    
+    // Pattern 1: Barrier Synchronization
+    func() {
+        fmt.Println("Pattern 1: Barrier Synchronization")
+        
+        // Unbuffered: Perfect barrier
+        barrier := make(chan bool)
+        const workers = 3
+        
+        for i := 1; i <= workers; i++ {
+            go func(id int) {
+                // Phase 1: Work
+                workTime := time.Duration(rand.Intn(200)) * time.Millisecond
+                time.Sleep(workTime)
+                fmt.Printf("Unbuffered Worker %d: Phase 1 complete\n", id)
+                
+                // Synchronize at barrier
+                barrier <- true // Block until coordinator receives
+                <-barrier       // Block until coordinator releases
+                
+                // Phase 2: Coordinated work
+                fmt.Printf("Unbuffered Worker %d: Phase 2 starting\n", id)
+            }(i)
+        }
+        
+        // Barrier coordinator
+        go func() {
+            // Wait for all to arrive
+            for i := 0; i < workers; i++ {
+                <-barrier
+                fmt.Printf("Barrier: Worker %d arrived\n", i+1)
+            }
+            
+            fmt.Println("Barrier: All arrived, releasing...")
+            
+            // Release all
+            for i := 0; i < workers; i++ {
+                barrier <- true
+            }
+        }()
+        
+        time.Sleep(1 * time.Second)
+        
+        // Buffered: Imperfect barrier (workers don't wait for each other)
+        fmt.Println("\nBuffered barrier (less coordination):")
+        bufferedBarrier := make(chan bool, workers)
+        
+        for i := 1; i <= workers; i++ {
+            go func(id int) {
+                workTime := time.Duration(rand.Intn(200)) * time.Millisecond
+                time.Sleep(workTime)
+                fmt.Printf("Buffered Worker %d: Phase 1 complete\n", id)
+                
+                bufferedBarrier <- true // Non-blocking
+                fmt.Printf("Buffered Worker %d: Continuing immediately\n", id)
+            }(i)
+        }
+        
+        time.Sleep(500 * time.Millisecond)
+    }()
+    
+    // Pattern 2: Request-Response
+    func() {
+        fmt.Println("\nPattern 2: Request-Response")
+        
+        // Unbuffered: Synchronous request-response
+        request := make(chan string)
+        response := make(chan string)
+        
+        go func() {
+            req := <-request // Blocks until request arrives
+            fmt.Printf("Server: Processing request '%s'\n", req)
+            time.Sleep(100 * time.Millisecond)
+            response <- fmt.Sprintf("Processed: %s", req) // Blocks until client receives
+            fmt.Println("Server: Response sent and acknowledged")
+        }()
+        
+        go func() {
+            fmt.Println("Client: Sending request")
+            request <- "sync-request" // Blocks until server receives
+            fmt.Println("Client: Request acknowledged, waiting for response")
+            
+            resp := <-response // Blocks until response ready
+            fmt.Printf("Client: Received response: %s\n", resp)
+        }()
+        
+        time.Sleep(300 * time.Millisecond)
+        
+        // Buffered: Asynchronous request-response
+        fmt.Println("\nBuffered request-response:")
+        asyncRequest := make(chan string, 5)
+        asyncResponse := make(chan string, 5)
+        
+        go func() {
+            for req := range asyncRequest {
+                fmt.Printf("Async Server: Processing '%s'\n", req)
+                asyncResponse <- fmt.Sprintf("Async: %s", req)
+            }
+        }()
+        
+        // Client can send multiple requests without waiting
+        for i := 1; i <= 3; i++ {
+            fmt.Printf("Async Client: Sending request %d\n", i)
+            asyncRequest <- fmt.Sprintf("async-request-%d", i)
+        }
+        close(asyncRequest)
+        
+        // Collect responses
+        for i := 1; i <= 3; i++ {
+            resp := <-asyncResponse
+            fmt.Printf("Async Client: Response %d: %s\n", i, resp)
+        }
+    }()
+}
+```
+
+## Performance Implications Analysis
+
+### Latency Comparison
+
+```go
+func benchmarkLatency() {
+    fmt.Println("=== Latency Benchmark ===")
+    
+    const iterations = 10000
+    
+    // Unbuffered channel latency
+    func() {
+        unbuffered := make(chan int)
+        start := time.Now()
+        
+        go func() {
+            for i := 0; i < iterations; i++ {
+                unbuffered <- i
+            }
+        }()
+        
+        for i := 0; i < iterations; i++ {
+            <-unbuffered
+        }
+        
+        unbufferedTime := time.Since(start)
+        fmt.Printf("Unbuffered: %v total, %v per operation\n", 
+            unbufferedTime, unbufferedTime/iterations)
+    }()
+    
+    // Buffered channel latency
+    func() {
+        buffered := make(chan int, 100)
+        start := time.Now()
+        
+        go func() {
+            for i := 0; i < iterations; i++ {
+                buffered <- i
+            }
+            close(buffered)
+        }()
+        
+        for range buffered {
+            // Receive all items
+        }
+        
+        bufferedTime := time.Since(start)
+        fmt.Printf("Buffered (100): %v total, %v per operation\n",
+            bufferedTime, bufferedTime/iterations)
+    }()
+    
+    // Different buffer sizes
+    bufferSizes := []int{1, 10, 100, 1000}
+    
+    for _, size := range bufferSizes {
+        func(bufSize int) {
+            buffered := make(chan int, bufSize)
+            start := time.Now()
+            
+            go func() {
+                for i := 0; i < iterations; i++ {
+                    buffered <- i
+                }
+                close(buffered)
+            }()
+            
+            count := 0
+            for range buffered {
+                count++
+            }
+            
+            duration := time.Since(start)
+            fmt.Printf("Buffer size %4d: %v (%v per op)\n",
+                bufSize, duration, duration/time.Duration(count))
+        }(size)
+    }
+}
+```
+
+### Throughput Analysis
+
+```go
+func benchmarkThroughput() {
+    fmt.Println("=== Throughput Benchmark ===")
+    
+    const duration = 2 * time.Second
+    
+    // Unbuffered throughput
+    func() {
+        unbuffered := make(chan int)
+        done := make(chan bool, 2)
+        var count int64
+        
+        // Producer
+        go func() {
+            defer func() { done <- true }()
+            for {
+                select {
+                case unbuffered <- int(atomic.AddInt64(&count, 1)):
+                case <-time.After(duration):
+                    return
+                }
+            }
+        }()
+        
+        // Consumer
+        go func() {
+            defer func() { done <- true }()
+            for {
+                select {
+                case <-unbuffered:
+                case <-time.After(duration):
+                    return
+                }
+            }
+        }()
+        
+        // Wait for completion
+        <-done
+        <-done
+        
+        finalCount := atomic.LoadInt64(&count)
+        throughput := float64(finalCount) / duration.Seconds()
+        fmt.Printf("Unbuffered throughput: %.0f ops/sec\n", throughput)
+    }()
+    
+    // Buffered throughput with different buffer sizes
+    bufferSizes := []int{1, 10, 100, 1000}
+    
+    for _, bufSize := range bufferSizes {
+        func(size int) {
+            buffered := make(chan int, size)
+            done := make(chan bool, 2)
+            var count int64
+            
+            // Producer
+            go func() {
+                defer func() { done <- true }()
+                for {
+                    select {
+                    case buffered <- int(atomic.AddInt64(&count, 1)):
+                    case <-time.After(duration):
+                        return
+                    }
+                }
+            }()
+            
+            // Consumer
+            go func() {
+                defer func() { done <- true }()
+                for {
+                    select {
+                    case <-buffered:
+                    case <-time.After(duration):
+                        return
+                    }
+                }
+            }()
+            
+            <-done
+            <-done
+            
+            finalCount := atomic.LoadInt64(&count)
+            throughput := float64(finalCount) / duration.Seconds()
+            fmt.Printf("Buffered (%d) throughput: %.0f ops/sec\n", 
+                size, throughput)
+        }(bufSize)
+    }
+}
+```
+
+### Memory Usage Patterns
+
+```go
+func analyzeMemoryUsage() {
+    fmt.Println("=== Memory Usage Analysis ===")
+    
+    // Function to measure memory usage
+    measureMemory := func(name string, fn func()) {
+        var m1, m2 runtime.MemStats
+        runtime.GC()
+        runtime.ReadMemStats(&m1)
+        
+        fn()
+        
+        runtime.GC()
+        runtime.ReadMemStats(&m2)
+        
+        fmt.Printf("%s: %d bytes allocated\n", name, m2.Alloc-m1.Alloc)
+    }
+    
+    const channelCount = 1000
+    
+    // Unbuffered channels
+    measureMemory("Unbuffered channels", func() {
+        channels := make([]chan int, channelCount)
+        for i := range channels {
+            channels[i] = make(chan int)
+        }
+        _ = channels // Keep alive
+    })
+    
+    // Buffered channels (different sizes)
+    bufferSizes := []int{1, 10, 100}
+    
+    for _, size := range bufferSizes {
+        measureMemory(fmt.Sprintf("Buffered channels (size %d)", size), func() {
+            channels := make([]chan int, channelCount)
+            for i := range channels {
+                channels[i] = make(chan int, size)
+            }
+            _ = channels // Keep alive
+        })
+    }
+    
+    // Memory growth with data
+    measureMemory("Buffered with data", func() {
+        ch := make(chan [1024]byte, 1000) // 1KB per item, 1000 capacity
+        
+        // Fill buffer
+        for i := 0; i < 500; i++ {
+            var data [1024]byte
+            ch <- data
+        }
+        
+        _ = ch // Keep alive
+    })
+}
+```
+
+## Goroutine Coordination Differences
+
+### Blocking Behavior Impact
+
+```go
+func demonstrateBlockingImpact() {
+    fmt.Println("=== Blocking Behavior Impact ===")
+    
+    // Test 1: Goroutine scheduling with unbuffered
+    func() {
+        fmt.Println("Test 1: Unbuffered scheduling behavior")
+        
+        ch := make(chan string)
+        done := make(chan bool)
+        
+        // Multiple senders
+        for i := 1; i <= 3; i++ {
+            go func(id int) {
+                for j := 1; j <= 3; j++ {
+                    msg := fmt.Sprintf("sender-%d-msg-%d", id, j)
+                    fmt.Printf("Sender %d: About to send %s\n", id, msg)
+                    
+                    start := time.Now()
+                    ch <- msg // Each send blocks until received
+                    duration := time.Since(start)
+                    
+                    fmt.Printf("Sender %d: Sent %s (blocked %v)\n", 
+                        id, msg, duration)
+                }
+                done <- true
+            }(i)
+        }
+        
+        // Single receiver with delays
+        go func() {
+            for i := 0; i < 9; i++ { // 3 senders * 3 messages each
+                msg := <-ch
+                fmt.Printf("Receiver: Got %s\n", msg)
+                
+                // Variable processing delay
+                delay := time.Duration((i%3)+1) * 50 * time.Millisecond
+                time.Sleep(delay)
+            }
+        }()
+        
+        // Wait for all senders
+        for i := 0; i < 3; i++ {
+            <-done
+        }
+        
+        time.Sleep(100 * time.Millisecond)
+    }()
+    
+    // Test 2: Goroutine scheduling with buffered
+    func() {
+        fmt.Println("\nTest 2: Buffered scheduling behavior")
+        
+        ch := make(chan string, 5) // Buffer allows some decoupling
+        done := make(chan bool)
+        
+        // Same senders
+        for i := 1; i <= 3; i++ {
+            go func(id int) {
+                for j := 1; j <= 3; j++ {
+                    msg := fmt.Sprintf("sender-%d-msg-%d", id, j)
+                    fmt.Printf("Sender %d: About to send %s\n", id, msg)
+                    
+                    start := time.Now()
+                    ch <- msg // May not block
+                    duration := time.Since(start)
+                    
+                    fmt.Printf("Sender %d: Sent %s (blocked %v)\n", 
+                        id, msg, duration)
+                }
+                done <- true
+            }(i)
+        }
+        
+        // Same receiver pattern
+        go func() {
+            defer close(ch)
+            for i := 0; i < 9; i++ {
+                msg := <-ch
+                fmt.Printf("Receiver: Got %s (buffer len: %d)\n", 
+                    msg, len(ch))
+                
+                delay := time.Duration((i%3)+1) * 50 * time.Millisecond
+                time.Sleep(delay)
+            }
+        }()
+        
+        // Wait for all senders
+        for i := 0; i < 3; i++ {
+            <-done
+        }
+    }()
+}
+```
+
+### Deadlock Susceptibility
+
+```go
+func analyzeDeadlockSusceptibility() {
+    fmt.Println("=== Deadlock Susceptibility Analysis ===")
+    
+    // Scenario 1: Unbuffered deadlock patterns
+    func() {
+        fmt.Println("Scenario 1: Unbuffered deadlock risks")
+        
+        // Common deadlock: sending without receiver
+        func() {
+            defer func() {
+                if r := recover(); r != nil {
+                    fmt.Println("Recovered from deadlock")
+                }
+            }()
+            
+            ch := make(chan int)
+            timeout := time.NewTimer(100 * time.Millisecond)
+            
+            go func() {
+                select {
+                case ch <- 42:
+                    fmt.Println("Unbuffered: Send succeeded")
+                case <-timeout.C:
+                    fmt.Println("Unbuffered: Send would deadlock")
+                }
+            }()
+            
+            time.Sleep(150 * time.Millisecond)
+        }()
+        
+        // Circular deadlock
+        func() {
+            fmt.Println("Testing circular deadlock resistance...")
+            
+            ch1 := make(chan int)
+            ch2 := make(chan int)
+            timeout := time.After(200 * time.Millisecond)
+            
+            go func() {
+                select {
+                case ch1 <- 1:
+                    select {
+                    case val := <-ch2:
+                        fmt.Printf("Goroutine 1: Got %d from ch2\n", val)
+                    case <-timeout:
+                        fmt.Println("Goroutine 1: Timeout on ch2")
+                    }
+                case <-timeout:
+                    fmt.Println("Goroutine 1: Timeout on ch1 send")
+                }
+            }()
+            
+            go func() {
+                select {
+                case ch2 <- 2:
+                    select {
+                    case val := <-ch1:
+                        fmt.Printf("Goroutine 2: Got %d from ch1\n", val)
+                    case <-timeout:
+                        fmt.Println("Goroutine 2: Timeout on ch1")
+                    }
+                case <-timeout:
+                    fmt.Println("Goroutine 2: Timeout on ch2 send")
+                }
+            }()
+            
+            time.Sleep(300 * time.Millisecond)
+        }()
+    }()
+    
+    // Scenario 2: Buffered deadlock resistance
+    func() {
+        fmt.Println("\nScenario 2: Buffered deadlock resistance")
+        
+        // Same patterns with buffered channels
+        func() {
+            ch := make(chan int, 1) // Buffer prevents immediate deadlock
+            
+            go func() {
+                ch <- 42 // Non-blocking due to buffer
+                fmt.Println("Buffered: Send succeeded immediately")
+            }()
+            
+            time.Sleep(100 * time.Millisecond)
+            val := <-ch
+            fmt.Printf("Buffered: Received %d\n", val)
+        }()
+        
+        // Buffered circular pattern
+        func() {
+            ch1 := make(chan int, 1)
+            ch2 := make(chan int, 1)
+            
+            go func() {
+                ch1 <- 1 // Non-blocking
+                val := <-ch2
+                fmt.Printf("Buffered Goroutine 1: Got %d\n", val)
+            }()
+            
+            go func() {
+                ch2 <- 2 // Non-blocking
+                val := <-ch1
+                fmt.Printf("Buffered Goroutine 2: Got %d\n", val)
+            }()
+            
+            time.Sleep(100 * time.Millisecond)
+        }()
+    }()
+}
+```
+
+## Error Handling Considerations
+
+### Channel Closure Behavior
+
+```go
+func compareClosureBehavior() {
+    fmt.Println("=== Channel Closure Behavior Comparison ===")
+    
+    // Unbuffered channel closure
+    func() {
+        fmt.Println("Unbuffered closure behavior:")
+        
+        ch := make(chan int)
+        
+        go func() {
+            for i := 1; i <= 3; i++ {
+                ch <- i
+                fmt.Printf("Unbuffered: Sent %d\n", i)
+                time.Sleep(50 * time.Millisecond)
+            }
+            close(ch)
+            fmt.Println("Unbuffered: Channel closed")
+        }()
+        
+        for {
+            val, ok := <-ch
+            if !ok {
+                fmt.Println("Unbuffered: Channel closed, exiting")
+                break
+            }
+            fmt.Printf("Unbuffered: Received %d\n", val)
+        }
+    }()
+    
+    // Buffered channel closure
+    func() {
+        fmt.Println("\nBuffered closure behavior:")
+        
+        ch := make(chan int, 5)
+        
+        go func() {
+            for i := 1; i <= 3; i++ {
+                ch <- i
+                fmt.Printf("Buffered: Sent %d (len=%d)\n", i, len(ch))
+            }
+            close(ch)
+            fmt.Printf("Buffered: Channel closed (len=%d)\n", len(ch))
+        }()
+        
+        time.Sleep(100 * time.Millisecond) // Let sender complete
+        
+        for {
+            val, ok := <-ch
+            if !ok {
+                fmt.Println("Buffered: Channel closed and empty")
+                break
+            }
+            fmt.Printf("Buffered: Received %d (len=%d)\n", val, len(ch))
+        }
+    }()
+    
+    // Closure with remaining data
+    func() {
+        fmt.Println("\nClosure with buffered data:")
+        
+        ch := make(chan string, 3)
+        
+        // Send data but don't receive immediately
+        ch <- "message 1"
+        ch <- "message 2"
+        ch <- "message 3"
+        
+        fmt.Printf("Before close: len=%d, cap=%d\n", len(ch), cap(ch))
+        
+        close(ch)
+        fmt.Println("Channel closed with data still buffered")
+        
+        // Data still available after close
+        for {
+            val, ok := <-ch
+            if !ok {
+                fmt.Println("All buffered data consumed")
+                break
+            }
+            fmt.Printf("Received after close: %s (len=%d)\n", val, len(ch))
+        }
+    }()
+}
+```
+
+### Panic Scenarios Comparison
+
+```go
+func comparePanicScenarios() {
+    fmt.Println("=== Panic Scenarios Comparison ===")
+    
+    // Helper function to safely test panics
+    testPanic := func(name string, fn func()) {
+        defer func() {
+            if r := recover(); r != nil {
+                fmt.Printf("%s: Panic caught: %v\n", name, r)
+            } else {
+                fmt.Printf("%s: No panic occurred\n", name)
+            }
+        }()
+        fn()
+    }
+    
+    // Test 1: Send to closed channel
+    testPanic("Unbuffered send to closed", func() {
+        ch := make(chan int)
+        close(ch)
+        ch <- 1 // Should panic
+    })
+    
+    testPanic("Buffered send to closed", func() {
+        ch := make(chan int, 5)
+        close(ch)
+        ch <- 1 // Should panic (same behavior)
+    })
+    
+    // Test 2: Double close
+    testPanic("Unbuffered double close", func() {
+        ch := make(chan int)
+        close(ch)
+        close(ch) // Should panic
+    })
+    
+    testPanic("Buffered double close", func() {
+        ch := make(chan int, 5)
+        close(ch)
+        close(ch) // Should panic (same behavior)
+    })
+    
+    // Test 3: Close nil channel
+    testPanic("Close nil unbuffered", func() {
+        var ch chan int
+        close(ch) // Should panic
+    })
+    
+    testPanic("Close nil buffered", func() {
+        var ch chan int
+        close(ch) // Should panic (same behavior)
+    })
+}
+```
+
+## Decision Framework: When to Use Each Type
+
+### Comprehensive Decision Matrix
+
+```go
+type ChannelDecision struct {
+    Scenario    string
+    Unbuffered  bool
+    Buffered    bool
+    Reasoning   string
+    Example     string
+}
+
+func getDecisionMatrix() []ChannelDecision {
+    return []ChannelDecision{
+        {
+            Scenario:    "Request-Response Pattern",
+            Unbuffered:  true,
+            Buffered:    false,
+            Reasoning:   "Need synchronous acknowledgment",
+            Example:     "RPC calls, database transactions",
+        },
+        {
+            Scenario:    "Event Notification",
+            Unbuffered:  false,
+            Buffered:    true,
+            Reasoning:   "Events can be queued, async processing",
+            Example:     "UI events, log messages",
+        },
+        {
+            Scenario:    "Producer-Consumer (different rates)",
+            Unbuffered:  false,
+            Buffered:    true,
+            Reasoning:   "Buffer smooths rate differences",
+            Example:     "Data processing pipelines",
+        },
+        {
+            Scenario:    "Barrier Synchronization",
+            Unbuffered:  true,
+            Buffered:    false,
+            Reasoning:   "All participants must synchronize",
+            Example:     "Phase synchronization, startup coordination",
+        },
+        {
+            Scenario:    "Work Distribution",
+            Unbuffered:  false,
+            Buffered:    true,
+            Reasoning:   "Workers can take jobs at their own pace",
+            Example:     "Worker pools, job queues",
+        },
+        {
+            Scenario:    "Resource Pooling",
+            Unbuffered:  false,
+            Buffered:    true,
+            Reasoning:   "Resources can be queued for reuse",
+            Example:     "Connection pools, object pools",
+        },
+        {
+            Scenario:    "Flow Control/Rate Limiting",
+            Unbuffered:  false,
+            Buffered:    true,
+            Reasoning:   "Buffer acts as token bucket",
+            Example:     "API rate limiting, bandwidth control",
+        },
+        {
+            Scenario:    "Handshake/Coordination",
+            Unbuffered:  true,
+            Buffered:    false,
+            Reasoning:   "Need guaranteed synchronization",
+            Example:     "Process coordination, state machine transitions",
+        },
+        {
+            Scenario:    "Memory Constrained",
+            Unbuffered:  true,
+            Buffered:    false,
+            Reasoning:   "Minimal memory overhead",
+            Example:     "Embedded systems, resource-limited environments",
+        },
+        {
+            Scenario:    "High Throughput",
+            Unbuffered:  false,
+            Buffered:    true,
+            Reasoning:   "Reduces blocking overhead",
+            Example:     "Data streaming, message queues",
+        },
+    }
+}
+
+func demonstrateDecisionFramework() {
+    fmt.Println("=== Channel Selection Decision Framework ===")
+    
+    decisions := getDecisionMatrix()
+    
+    fmt.Println("| Scenario | Unbuffered | Buffered | Reasoning | Example |")
+    fmt.Println("|----------|------------|----------|-----------|---------|")
+    
+    for _, d := range decisions {
+        unbufferedMark := "❌"
+        bufferedMark := "❌"
+        
+        if d.Unbuffered {
+            unbufferedMark = "✅"
+        }
+        if d.Buffered {
+            bufferedMark = "✅"
+        }
+        
+        fmt.Printf("| %s | %s | %s | %s | %s |\n",
+            d.Scenario, unbufferedMark, bufferedMark, d.Reasoning, d.Example)
+    }
+}
+```
+
+### Practical Decision Examples
+
+```go
+func demonstratePracticalDecisions() {
+    fmt.Println("=== Practical Decision Examples ===")
+    
+    // Example 1: Web Server Request Handling
+    func() {
+        fmt.Println("Example 1: Web Server Request Handling")
+        
+        // Decision: Use buffered channel for request queue
+        // Reasoning: Handle request bursts, decouple request arrival from processing
+        
+        requestQueue := make(chan *http.Request, 100) // Buffer for burst handling
+        
+        // Simulate request handler
+        go func() {
+            for i := 0; i < 5; i++ {
+                req, _ := http.NewRequest("GET", fmt.Sprintf("/api/item/%d", i), nil)
+                
+                select {
+                case requestQueue <- req:
+                    fmt.Printf("Request %d queued (queue len: %d)\n", i, len(requestQueue))
+                default:
+                    fmt.Printf("Request %d dropped - queue full\n", i)
+                }
+                
+                // Simulate burst
+                if i < 3 {
+                    time.Sleep(10 * time.Millisecond)
+                } else {
+                    time.Sleep(100 * time.Millisecond)
+                }
+            }
+            close(requestQueue)
+        }()
+        
+        // Process requests
+        for req := range requestQueue {
+            fmt.Printf("Processing %s (queue len: %d)\n", req.URL.Path, len(requestQueue))
+            time.Sleep(50 * time.Millisecond) // Simulate processing
+        }
+    }()
+    
+    // Example 2: Database Transaction Coordination
+    func() {
+        fmt.Println("\nExample 2: Database Transaction Coordination")
+        
+        // Decision: Use unbuffered channel for transaction commits
+        // Reasoning: Need synchronous confirmation of commit/rollback
+        
+        type Transaction struct {
+            ID     int
+            Query  string
+            Result chan error // Unbuffered for sync response
+        }
+        
+        transactions := make(chan Transaction) // Unbuffered for coordination
+        
+        // Database handler
+        go func() {
+            for tx := range transactions {
+                fmt.Printf("DB: Processing transaction %d: %s\n", tx.ID, tx.Query)
+                
+                // Simulate processing
+                time.Sleep(50 * time.Millisecond)
+                
+                // Send result synchronously
+                if tx.ID%4 == 0 {
+                    tx.Result <- fmt.Errorf("transaction %d failed", tx.ID)
+                } else {
+                    tx.Result <- nil // Success
+                }
+                
+                fmt.Printf("DB: Transaction %d result sent\n", tx.ID)
+            }
+        }()
+        
+        // Client transactions
+        for i := 1; i <= 3; i++ {
+            result := make(chan error) // Unbuffered for sync
+            
+            tx := Transaction{
+                ID:     i,
+                Query:  fmt.Sprintf("UPDATE users SET name='user%d'", i),
+                Result: result,
+            }
+            
+            fmt.Printf("Client: Sending transaction %d\n", i)
+            transactions <- tx // Blocks until DB receives
+            
+            fmt.Printf("Client: Transaction %d acknowledged, waiting for result\n", i)
+            err := <-result // Blocks until result available
+            
+            if err != nil {
+                fmt.Printf("Client: Transaction %d failed: %v\n", i, err)
+            } else {
+                fmt.Printf("Client: Transaction %d committed successfully\n", i)
+            }
+        }
+        
+        close(transactions)
+    }()
+    
+    // Example 3: Log Processing System
+    func() {
+        fmt.Println("\nExample 3: Log Processing System")
+        
+        // Decision: Buffered for log collection, unbuffered for critical alerts
+        
+        type LogEntry struct {
+            Level     string
+            Message   string
+            Timestamp time.Time
+        }
+        
+        // Large buffer for regular logs
+        logQueue := make(chan LogEntry, 1000)
+        
+        // Unbuffered for critical alerts (need immediate handling)
+        alertChannel := make(chan LogEntry)
+        
+        // Log processor
+        go func() {
+            for log := range logQueue {
+                fmt.Printf("Log Processor: [%s] %s (queue: %d)\n", 
+                    log.Level, log.Message, len(logQueue))
+                
+                // Critical logs go to alert channel
+                if log.Level == "CRITICAL" {
+                    select {
+                    case alertChannel <- log:
+                        fmt.Println("Log Processor: Critical alert sent")
+                    default:
+                        fmt.Println("Log Processor: Alert handler not ready!")
+                    }
+                }
+                
+                time.Sleep(10 * time.Millisecond) // Processing time
+            }
+        }()
+        
+        // Alert handler (must be responsive)
+        go func() {
+            for alert := range alertChannel {
+                fmt.Printf("ALERT HANDLER: CRITICAL - %s at %s\n", 
+                    alert.Message, alert.Timestamp.Format("15:04:05.000"))
+                // Immediate response required
+            }
+        }()
+        
+        // Generate logs
+        levels := []string{"INFO", "WARN", "ERROR", "CRITICAL"}
+        for i := 1; i <= 10; i++ {
+            level := levels[rand.Intn(len(levels))]
+            
+            log := LogEntry{
+                Level:     level,
+                Message:   fmt.Sprintf("Log message %d", i),
+                Timestamp: time.Now(),
+            }
+            
+            // Non-blocking send (logs can be dropped if system overloaded)
+            select {
+            case logQueue <- log:
+                fmt.Printf("Logger: Queued %s log %d\n", level, i)
+            default:
+                fmt.Printf("Logger: Dropped log %d - queue full\n", i)
+            }
+            
+            time.Sleep(20 * time.Millisecond)
+        }
+        
+        close(logQueue)
+        time.Sleep(200 * time.Millisecond)
+        close(alertChannel)
+    }()
+}
+```
+
+### Performance vs Correctness Trade-offs
+
+```go
+func demonstrateTradeoffs() {
+    fmt.Println("=== Performance vs Correctness Trade-offs ===")
+    
+    // Scenario 1: Counter with different synchronization approaches
+    func() {
+        fmt.Println("Scenario 1: Counter Synchronization")
+        
+        const increments = 1000
+        const workers = 10
+        
+        // Approach 1: Unbuffered channel (correctness-focused)
+        func() {
+            fmt.Println("Approach 1: Unbuffered (strong consistency)")
+            
+            counterCh := make(chan int)
+            requests := make(chan string)
+            
+            // Counter service
+            go func() {
+                counter := 0
+                for {
+                    select {
+                    case op := <-requests:
+                        if op == "inc" {
+                            counter++
+                        } else if op == "get" {
+                            counterCh <- counter
+                        } else {
+                            return // "stop"
+                        }
+                    }
+                }
+            }()
+            
+            start := time.Now()
+            
+            // Workers increment
+            var wg sync.WaitGroup
+            for w := 0; w < workers; w++ {
+                wg.Add(1)
+                go func() {
+                    defer wg.Done()
+                    for i := 0; i < increments/workers; i++ {
+                        requests <- "inc" // Synchronous
+                    }
+                }()
+            }
+            
+            wg.Wait()
+            
+            // Get final value
+            requests <- "get"
+            finalValue := <-counterCh
+            requests <- "stop"
+            
+            duration := time.Since(start)
+            fmt.Printf("Unbuffered: Final value=%d, Duration=%v\n", finalValue, duration)
+        }()
+        
+        // Approach 2: Buffered channel (performance-focused)
+        func() {
+            fmt.Println("Approach 2: Buffered (eventual consistency)")
+            
+            counterCh := make(chan int, 1)
+            requests := make(chan string, 100) // Buffer for performance
+            
+            // Counter service
+            go func() {
+                counter := 0
+                for {
+                    select {
+                    case op := <-requests:
+                        if op == "inc" {
+                            counter++
+                        } else if op == "get" {
+                            select {
+                            case counterCh <- counter:
+                            default: // Non-blocking response
+                                counterCh <- -1 // Indicate busy
+                            }
+                        } else {
+                            return // "stop"
+                        }
+                    }
+                }
+            }()
+            
+            start := time.Now()
+            
+            // Workers increment (faster due to buffering)
+            var wg sync.WaitGroup
+            for w := 0; w < workers; w++ {
+                wg.Add(1)
+                go func() {
+                    defer wg.Done()
+                    for i := 0; i < increments/workers; i++ {
+                        requests <- "inc" // May not block
+                    }
+                }()
+            }
+            
+            wg.Wait()
+            
+            // Wait for request queue to drain
+            for len(requests) > 0 {
+                time.Sleep(1 * time.Millisecond)
+            }
+            
+            // Get final value
+            requests <- "get"
+            finalValue := <-counterCh
+            requests <- "stop"
+            
+            duration := time.Since(start)
+            fmt.Printf("Buffered: Final value=%d, Duration=%v\n", finalValue, duration)
+        }()
+    }()
+    
+    // Scenario 2: Data processing pipeline
+    func() {
+        fmt.Println("\nScenario 2: Processing Pipeline Trade-offs")
+        
+        const dataItems = 100
+        
+        // Unbuffered pipeline (strong ordering, slower)
+        func() {
+            fmt.Println("Unbuffered pipeline (strong ordering):")
+            
+            input := make(chan int)
+            processed := make(chan string)
+            output := make(chan string)
+            
+            // Stage 1: Generate data
+            go func() {
+                defer close(input)
+                for i := 1; i <= dataItems; i++ {
+                    input <- i
+                }
+            }()
+            
+            // Stage 2: Process (each item blocks until next stage ready)
+            go func() {
+                defer close(processed)
+                for data := range input {
+                    result := fmt.Sprintf("processed-%d", data)
+                    processed <- result // Blocks until stage 3 receives
+                }
+            }()
+            
+            // Stage 3: Format (each item blocks until consumer ready)
+            go func() {
+                defer close(output)
+                for data := range processed {
+                    result := fmt.Sprintf("formatted-%s", data)
+                    output <- result // Blocks until consumer receives
+                }
+            }()
+            
+            start := time.Now()
+            count := 0
+            for item := range output {
+                count++
+                // Simulate variable consumer speed
+                if count%10 == 0 {
+                    time.Sleep(10 * time.Millisecond)
+                }
+                _ = item
+            }
+            
+            duration := time.Since(start)
+            fmt.Printf("Unbuffered pipeline: %d items in %v\n", count, duration)
+        }()
+        
+        // Buffered pipeline (weaker ordering, faster)
+        func() {
+            fmt.Println("Buffered pipeline (weaker ordering):")
+            
+            input := make(chan int, 20)
+            processed := make(chan string, 20)
+            output := make(chan string, 20)
+            
+            // Same stages but with buffering
+            go func() {
+                defer close(input)
+                for i := 1; i <= dataItems; i++ {
+                    input <- i // May not block
+                }
+            }()
+            
+            go func() {
+                defer close(processed)
+                for data := range input {
+                    result := fmt.Sprintf("processed-%d", data)
+                    processed <- result // May not block
+                }
+            }()
+            
+            go func() {
+                defer close(output)
+                for data := range processed {
+                    result := fmt.Sprintf("formatted-%s", data)
+                    output <- result // May not block
+                }
+            }()
+            
+            start := time.Now()
+            count := 0
+            for item := range output {
+                count++
+                if count%10 == 0 {
+                    time.Sleep(10 * time.Millisecond)
+                }
+                _ = item
+            }
+            
+            duration := time.Since(start)
+            fmt.Printf("Buffered pipeline: %d items in %v\n", count, duration)
+        }()
+    }()
+}
+```
+
+## Migration Strategies
+
+### Converting Between Channel Types
+
+```go
+func demonstrateMigrationStrategies() {
+    fmt.Println("=== Migration Strategies ===")
+    
+    // Strategy 1: Unbuffered to Buffered (performance optimization)
+    func() {
+        fmt.Println("Strategy 1: Unbuffered to Buffered Migration")
+        
+        // Original unbuffered design
+        originalDesign := func() {
+            fmt.Println("Original (unbuffered) design:")
+            
+            tasks := make(chan string)
+            results := make(chan string)
+            
+            // Worker
+            go func() {
+                defer close(results)
+                for task := range tasks {
+                    result := fmt.Sprintf("processed-%s", task)
+                    fmt.Printf("Worker: Processed %s -> %s\n", task, result)
+                    results <- result // Blocks until consumer reads
+                }
+            }()
+            
+            // Task generator
+            go func() {
+                defer close(tasks)
+                for i := 1; i <= 3; i++ {
+                    task := fmt.Sprintf("task-%d", i)
+                    fmt.Printf("Generator: Sending %s\n", task)
+                    tasks <- task // Blocks until worker reads
+                    fmt.Printf("Generator: Sent %s\n", task)
+                }
+            }()
+            
+            // Consumer
+            for result := range results {
+                fmt.Printf("Consumer: Got %s\n", result)
+                time.Sleep(100 * time.Millisecond) // Slow consumer
+            }
+        }
+        
+        originalDesign()
+        
+        // Migrated buffered design
+        migratedDesign := func() {
+            fmt.Println("\nMigrated (buffered) design:")
+            
+            tasks := make(chan string, 5)    // Added buffer
+            results := make(chan string, 5)  // Added buffer
+            
+            // Same worker logic
+            go func() {
+                defer close(results)
+                for task := range tasks {
+                    result := fmt.Sprintf("processed-%s", task)
+                    fmt.Printf("Worker: Processed %s -> %s\n", task, result)
+                    results <- result // May not block
+                }
+            }()
+            
+            // Same generator logic
+            go func() {
+                defer close(tasks)
+                for i := 1; i <= 3; i++ {
+                    task := fmt.Sprintf("task-%d", i)
+                    fmt.Printf("Generator: Sending %s\n", task)
+                    tasks <- task // May not block
+                    fmt.Printf("Generator: Sent %s\n", task)
+                }
+            }()
+            
+            // Same consumer logic
+            for result := range results {
+                fmt.Printf("Consumer: Got %s\n", result)
+                time.Sleep(100 * time.Millisecond)
+            }
+        }
+        
+        migratedDesign()
+    }()
+    
+    // Strategy 2: Buffered to Unbuffered (correctness requirements)
+    func() {
+        fmt.Println("\nStrategy 2: Buffered to Unbuffered Migration")
+        
+        // Original buffered design (potential race condition)
+        originalAsyncDesign := func() {
+            fmt.Println("Original (buffered) design with race condition:")
+            
+            commands := make(chan string, 10)
+            acks := make(chan bool, 10)
+            
+            // Command processor
+            go func() {
+                state := 0
+                for cmd := range commands {
+                    if cmd == "increment" {
+                        state++
+                        fmt.Printf("Processor: State = %d\n", state)
+                        acks <- true // Non-blocking ack
+                    }
+                }
+            }()
+            
+            // Client (doesn't wait for ack properly)
+            go func() {
+                defer close(commands)
+                for i := 1; i <= 3; i++ {
+                    fmt.Printf("Client: Sending increment %d\n", i)
+                    commands <- "increment"
+                    
+                    // Race condition: may not wait for processing
+                    select {
+                    case <-acks:
+                        fmt.Printf("Client: Ack received for %d\n", i)
+                    case <-time.After(10 * time.Millisecond):
+                        fmt.Printf("Client: Timeout on ack %d\n", i)
+                    }
+                }
+            }()
+            
+            time.Sleep(200 * time.Millisecond)
+        }
+        
+        originalAsyncDesign()
+        
+        // Migrated unbuffered design (guaranteed synchronization)
+        migratedSyncDesign := func() {
+            fmt.Println("\nMigrated (unbuffered) design with guaranteed sync:")
+            
+            commands := make(chan string)  // Unbuffered for sync
+            acks := make(chan bool)        // Unbuffered for sync
+            
+            // Same processor logic
+            go func() {
+                state := 0
+                for cmd := range commands {
+                    if cmd == "increment" {
+                        state++
+                        fmt.Printf("Processor: State = %d\n", state)
+                        acks <- true // Blocks until client receives
+                        fmt.Printf("Processor: Ack confirmed for state %d\n", state)
+                    }
+                }
+            }()
+            
+            // Client with guaranteed synchronization
+            go func() {
+                defer close(commands)
+                for i := 1; i <= 3; i++ {
+                    fmt.Printf("Client: Sending increment %d\n", i)
+                    commands <- "increment" // Blocks until processor receives
+                    
+                    fmt.Printf("Client: Command %d acknowledged, waiting for completion\n", i)
+                    <-acks // Blocks until processor completes
+                    fmt.Printf("Client: Operation %d fully completed\n", i)
+                }
+            }()
+            
+            time.Sleep(200 * time.Millisecond)
+        }
+        
+        migratedSyncDesign()
+    }()
+}
+```
+
+### Hybrid Approaches
+
+```go
+func demonstrateHybridApproaches() {
+    fmt.Println("=== Hybrid Channel Approaches ===")
+    
+    // Approach 1: Different channel types for different purposes
+    func() {
+        fmt.Println("Approach 1: Mixed channel types in one system")
+        
+        type Order struct {
+            ID       int
+            Items    []string
+            Response chan OrderResult // Unbuffered for sync response
+        }
+        
+        type OrderResult struct {
+            ID      int
+            Status  string
+            Total   float64
+            Error   error
+        }
+        
+        // Buffered for high-throughput order intake
+        orderQueue := make(chan Order, 100)
+        
+        // Unbuffered for critical notifications
+        criticalAlerts := make(chan string)
+        
+        // Order processor
+        go func() {
+            for order := range orderQueue {
+                fmt.Printf("Processing order %d with %d items\n", 
+                    order.ID, len(order.Items))
+                
+                result := OrderResult{
+                    ID:     order.ID,
+                    Status: "completed",
+                    Total:  float64(len(order.Items)) * 10.99,
+                }
+                
+                // Synchronous response to client
+                order.Response <- result
+                close(order.Response)
+                
+                // Critical orders trigger alerts
+                if result.Total > 50.0 {
+                    select {
+                    case criticalAlerts <- fmt.Sprintf("High value order: %d", order.ID):
+                        fmt.Printf("Critical alert sent for order %d\n", order.ID)
+                    default:
+                        fmt.Printf("Alert handler busy for order %d\n", order.ID)
+                    }
+                }
+            }
+        }()
+        
+        // Alert handler (must be responsive)
+        go func() {
+            for alert := range criticalAlerts {
+                fmt.Printf("ALERT: %s\n", alert)
+                time.Sleep(50 * time.Millisecond) // Processing time
+            }
+        }()
+        
+        // Simulate order processing
+        for i := 1; i <= 5; i++ {
+            response := make(chan OrderResult) // Unbuffered for sync
+            
+            order := Order{
+                ID:       i,
+                Items:    make([]string, rand.Intn(10)+1),
+                Response: response,
+            }
+            
+            fmt.Printf("Submitting order %d\n", order.ID)
+            
+            select {
+            case orderQueue <- order:
+                fmt.Printf("Order %d queued\n", order.ID)
+            default:
+                fmt.Printf("Order %d rejected - queue full\n", order.ID)
+                continue
+            }
+            
+            // Wait for synchronous response
+            result := <-response
+            fmt.Printf("Order %d result: %s, total: $%.2f\n", 
+                result.ID, result.Status, result.Total)
+        }
+        
+        close(orderQueue)
+        time.Sleep(200 * time.Millisecond)
+        close(criticalAlerts)
+    }()
+    
+    // Approach 2: Adaptive channel selection
+    func() {
+        fmt.Println("\nApproach 2: Adaptive channel selection")
+        
+        type Message struct {
+            Priority int
+            Content  string
+            Response chan string
+        }
+        
+        // Different queues for different priorities
+        highPriorityQueue := make(chan Message)      // Unbuffered for immediate processing
+        normalQueue := make(chan Message, 50)        // Buffered for throughput
+        lowPriorityQueue := make(chan Message, 100)  // Large buffer for batch processing
+        
+        // Priority-aware message processor
+        go func() {
+            for {
+                select {
+                // High priority: always first (unbuffered, blocking)
+                case msg := <-highPriorityQueue:
+                    fmt.Printf("HIGH PRIORITY: Processing %s\n", msg.Content)
+                    result := fmt.Sprintf("URGENT: %s", strings.ToUpper(msg.Content))
+                    if msg.Response != nil {
+                        msg.Response <- result
+                        close(msg.Response)
+                    }
+                    
+                // Normal priority: second choice
+                case msg := <-normalQueue:
+                    fmt.Printf("NORMAL: Processing %s\n", msg.Content)
+                    result := fmt.Sprintf("Normal: %s", msg.Content)
+                    if msg.Response != nil {
+                        msg.Response <- result
+                        close(msg.Response)
+                    }
+                    
+                // Low priority: only when others empty
+                case msg := <-lowPriorityQueue:
+                    fmt.Printf("LOW: Processing %s\n", msg.Content)
+                    result := fmt.Sprintf("low: %s", strings.ToLower(msg.Content))
+                    if msg.Response != nil {
+                        msg.Response <- result
+                        close(msg.Response)
+                    }
+                    
+                // Timeout to prevent blocking
+                case <-time.After(100 * time.Millisecond):
+                    return
+                }
+            }
+        }()
+        
+        // Send messages with different priorities
+        priorities := []int{2, 0, 1, 0, 2, 1} // 0=high, 1=normal, 2=low
+        
+        for i, priority := range priorities {
+            var response chan string
+            var queue chan Message
+            
+            message := Message{
+                Priority: priority,
+                Content:  fmt.Sprintf("message-%d", i+1),
+            }
+            
+            switch priority {
+            case 0: // High priority
+                response = make(chan string) // Unbuffered for sync response
+                message.Response = response
+                queue = highPriorityQueue
+                fmt.Printf("Sending HIGH priority message %d\n", i+1)
+                
+            case 1: // Normal priority
+                response = make(chan string, 1) // Small buffer
+                message.Response = response
+                queue = normalQueue
+                fmt.Printf("Sending NORMAL priority message %d\n", i+1)
+                
+            case 2: // Low priority
+                // No response needed for low priority
+                queue = lowPriorityQueue
+                fmt.Printf("Sending LOW priority message %d\n", i+1)
+            }
+            
+            // Send based on priority
+            if priority == 0 {
+                queue <- message // Blocking for high priority
+                if response != nil {
+                    result := <-response // Wait for response
+                    fmt.Printf("High priority response: %s\n", result)
+                }
+            } else {
+                select {
+                case queue <- message: // Non-blocking for normal/low priority
+                    if response != nil {
+                        go func() {
+                            result := <-response
+                            fmt.Printf("Async response: %s\n", result)
+                        }()
+                    }
+                default:
+                    fmt.Printf("Message %d dropped - queue full\n", i+1)
+                }
+            }
+            
+            time.Sleep(50 * time.Millisecond)
+        }
+        
+        time.Sleep(500 * time.Millisecond)
+    }()
+}
+```
+
+## Summary
+
+This comprehensive comparison reveals the fundamental differences between buffered and unbuffered channels:
+
+### **Key Differences Summary**
+
+| Aspect | Unbuffered | Buffered |
+|--------|------------|----------|
+| **Communication Model** | Synchronous (rendezvous) | Asynchronous (queued) |
+| **Memory Overhead** | Minimal | Proportional to capacity |
+| **Blocking Behavior** | Always blocks without counterpart | Conditional blocking |
+| **Synchronization Strength** | Strong happens-before guarantees | Weaker synchronization |
+| **Performance** | Higher latency, lower memory | Lower latency, higher memory |
+| **Use Cases** | Coordination, barriers, RPC | Queuing, decoupling, throughput |
+
+### **Decision Guidelines**
+
+**Choose Unbuffered When:**
+- Strong synchronization is required
+- Memory usage must be minimal
+- Request-response patterns are needed
+- Coordination between goroutines is critical
+- Backpressure is desired
+
+**Choose Buffered When:**
+- Throughput is more important than synchronization
+- Producer and consumer have different rates
+- Bursty workloads need smoothing
+- Decoupling components is beneficial
+- Event queuing is required
+
+### **Best Practices**
+
+1. **Start with unbuffered** for correctness, migrate to buffered for performance if needed
+2. **Size buffers carefully** based on expected load patterns and memory constraints
+3. **Monitor channel utilization** to detect bottlenecks and optimization opportunities
+4. **Use hybrid approaches** when different parts of the system have different requirements
+5. **Consider migration strategies** when system requirements change over time
+
+Understanding these differences enables you to make informed architectural decisions and build robust, performant concurrent systems in Go. The choice between buffered and unbuffered channels often represents a fundamental trade-off between correctness guarantees and performance characteristics.
+
+In the next chapter, we'll explore **detailed examples and patterns** that demonstrate these concepts in real-world scenarios, showing how to apply this knowledge to build production-ready concurrent systems.
+
+---
+
+*This chapter provided a thorough comparison of buffered and unbuffered channels across all dimensions. The decision framework and practical examples will guide you in choosing the right channel type for your specific use cases and requirements.*
+
