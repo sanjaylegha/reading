@@ -1,5 +1,136 @@
 # Goroutines in Go: A Comprehensive Guide
 
+## Table of Contents
+
+### Chapter 1: Understanding Goroutines
+- [1.1 What are Goroutines?](#11-what-are-goroutines)
+- [1.2 Goroutines vs Traditional Threads](#12-goroutines-vs-traditional-threads)
+- [1.3 Why Use Goroutines?](#13-why-use-goroutines)
+
+### Chapter 2: Basic Goroutine Usage
+- [2.1 Starting a Goroutine](#21-starting-a-goroutine)
+  - [2.1.1 Basic Syntax](#211-basic-syntax)
+  - [2.1.2 Anonymous Function Goroutines](#212-anonymous-function-goroutines)
+  - [2.1.3 Multiple Goroutines](#213-multiple-goroutines)
+- [2.2 Goroutine Lifecycle](#22-goroutine-lifecycle)
+  - [2.2.1 Lifecycle Stages](#221-lifecycle-stages)
+  - [2.2.2 Goroutine Termination](#222-goroutine-termination)
+  - [2.2.3 Preventing Premature Termination](#223-preventing-premature-termination)
+
+### Chapter 3: Goroutine Communication with Channels
+- [3.1 Understanding Channel Fundamentals](#31-understanding-channel-fundamentals)
+  - [3.1.1 What Are Channels?](#311-what-are-channels)
+  - [3.1.2 The Channel Operator](#312-the-channel-operator)
+- [3.2 Channel Types and Their Behavior](#32-channel-types-and-their-behavior)
+  - [3.2.1 Unbuffered Channels: Perfect Synchronization](#321-unbuffered-channels-perfect-synchronization)
+  - [3.2.2 Buffered Channels: Asynchronous Communication](#322-buffered-channels-asynchronous-communication)
+  - [3.2.3 Channel Direction: Making Intent Clear](#323-channel-direction-making-intent-clear)
+- [3.3 Advanced Channel Communication Patterns](#33-advanced-channel-communication-patterns)
+  - [3.3.1 Request-Response Pattern](#331-request-response-pattern)
+  - [3.3.2 Broadcast Pattern](#332-broadcast-pattern)
+  - [3.3.3 Pipeline Pattern with Channels](#333-pipeline-pattern-with-channels)
+- [3.4 Channel Best Practices and Common Pitfalls](#34-channel-best-practices-and-common-pitfalls)
+  - [3.4.1 Always Close Channels from Senders](#341-always-close-channels-from-senders)
+  - [3.4.2 Use Select for Non-Blocking Operations](#342-use-select-for-non-blocking-operations)
+  - [3.4.3 Handle Channel Closure Properly](#343-handle-channel-closure-properly)
+- [3.5 Real-World Channel Examples](#35-real-world-channel-examples)
+  - [3.5.1 Web Request Handler with Channels](#351-web-request-handler-with-channels)
+  - [3.5.2 Rate Limiter with Channels](#352-rate-limiter-with-channels)
+- [3.6 Channel Performance Considerations](#36-channel-performance-considerations)
+  - [3.6.1 When to Use Buffered vs Unbuffered](#361-when-to-use-buffered-vs-unbuffered)
+  - [3.6.2 Channel Sizing Guidelines](#362-channel-sizing-guidelines)
+- [3.7 Summary](#37-summary)
+
+### Chapter 4: Advanced Goroutine Patterns
+- [4.1 Worker Pool Pattern](#41-worker-pool-pattern)
+  - [4.1.1 Basic Worker Pool](#411-basic-worker-pool)
+  - [4.1.2 Worker Pool with Error Handling](#412-worker-pool-with-error-handling)
+- [4.2 Pipeline Pattern with Goroutines](#42-pipeline-pattern-with-goroutines)
+  - [4.2.1 Basic Pipeline](#421-basic-pipeline)
+  - [4.2.2 Pipeline with Fan-Out and Fan-In](#422-pipeline-with-fan-out-and-fan-in)
+- [4.3 Select Statement with Goroutines](#43-select-statement-with-goroutines)
+  - [4.3.1 Basic Select](#431-basic-select)
+  - [4.3.2 Select with Timeout](#432-select-with-timeout)
+  - [4.3.3 Non-blocking Select](#433-non-blocking-select)
+
+### Chapter 5: Goroutine Synchronization
+- [5.1 WaitGroup for Coordination](#51-waitgroup-for-coordination)
+  - [5.1.1 Basic WaitGroup Usage](#511-basic-waitgroup-usage)
+  - [5.1.2 WaitGroup with Error Handling](#512-waitgroup-with-error-handling)
+- [5.2 Mutex for Shared Data Protection](#52-mutex-for-shared-data-protection)
+  - [5.2.1 Basic Mutex Usage](#521-basic-mutex-usage)
+  - [5.2.2 RWMutex for Read/Write Operations](#522-rwmutex-for-readwrite-operations)
+- [5.3 Context for Cancellation](#53-context-for-cancellation)
+  - [5.3.1 Basic Context Usage](#531-basic-context-usage)
+  - [5.3.2 Context with Values](#532-context-with-values)
+  - [5.3.3 Context Cancellation Chain](#533-context-cancellation-chain)
+
+### Chapter 6: Common Goroutine Patterns
+- [6.1 Producer-Consumer Pattern](#61-producer-consumer-pattern)
+  - [6.1.1 Basic Producer-Consumer](#611-basic-producer-consumer)
+  - [6.1.2 Producer-Consumer with Rate Limiting](#612-producer-consumer-with-rate-limiting)
+- [6.2 Pub-Sub Pattern](#62-pub-sub-pattern)
+  - [6.2.1 Basic Pub-Sub](#621-basic-pub-sub)
+- [6.3 Pipeline with Error Handling](#63-pipeline-with-error-handling)
+  - [6.3.1 Error-Aware Pipeline](#631-error-aware-pipeline)
+
+### Chapter 7: Goroutine Best Practices
+- [7.1 Always Handle Goroutine Lifecycle](#71-always-handle-goroutine-lifecycle)
+  - [7.1.1 Proper Cleanup](#711-proper-cleanup)
+  - [7.1.2 Resource Management](#712-resource-management)
+- [7.2 Avoid Common Pitfalls](#72-avoid-common-pitfalls)
+  - [7.2.1 Goroutine Leaks](#721-goroutine-leaks)
+  - [7.2.2 Race Conditions](#722-race-conditions)
+  - [7.2.3 Channel Deadlocks](#723-channel-deadlocks)
+- [7.3 Performance Considerations](#73-performance-considerations)
+  - [7.3.1 Goroutine Pooling](#731-goroutine-pooling)
+  - [7.3.2 Memory Management](#732-memory-management)
+
+### Chapter 8: Testing Goroutines
+- [8.1 Unit Testing Goroutines](#81-unit-testing-goroutines)
+  - [8.1.1 Testing with Channels](#811-testing-with-channels)
+  - [8.1.2 Testing with WaitGroup](#812-testing-with-waitgroup)
+- [8.2 Integration Testing](#82-integration-testing)
+  - [8.2.1 Full Pipeline Test](#821-full-pipeline-test)
+  - [8.2.2 Stress Testing](#822-stress-testing)
+  - [8.2.3 Race Condition Testing](#823-race-condition-testing)
+- [8.3 Benchmarking Goroutines](#83-benchmarking-goroutines)
+  - [8.3.1 Basic Benchmarking](#831-basic-benchmarking)
+  - [8.3.2 Memory Benchmarking](#832-memory-benchmarking)
+
+### Chapter 9: Advanced Goroutine Patterns
+- [9.1 Circuit Breaker Pattern](#91-circuit-breaker-pattern)
+  - [9.1.1 Basic Circuit Breaker](#911-basic-circuit-breaker)
+- [9.2 Rate Limiting](#92-rate-limiting)
+  - [9.2.1 Token Bucket Rate Limiter](#921-token-bucket-rate-limiter)
+- [9.3 Load Balancer Pattern](#93-load-balancer-pattern)
+  - [9.3.1 Round-Robin Load Balancer](#931-round-robin-load-balancer)
+  - [9.3.2 Weighted Load Balancer](#932-weighted-load-balancer)
+
+### Chapter 10: Goroutines in Real-World Applications
+- [10.1 Web Server with Goroutines](#101-web-server-with-goroutines)
+  - [10.1.1 Basic HTTP Server](#1011-basic-http-server)
+  - [10.1.2 Middleware with Goroutines](#1012-middleware-with-goroutines)
+- [10.2 Database Connection Pool](#102-database-connection-pool)
+  - [10.2.1 Connection Pool Implementation](#1021-connection-pool-implementation)
+- [10.3 Background Job Processor](#103-background-job-processor)
+  - [10.3.1 Job Queue Implementation](#1031-job-queue-implementation)
+
+### Chapter 11: Debugging and Monitoring Goroutines
+- [11.1 Goroutine Profiling](#111-goroutine-profiling)
+  - [11.1.1 Runtime Statistics](#1111-runtime-statistics)
+  - [11.1.2 Goroutine Stack Traces](#1112-goroutine-stack-traces)
+- [11.2 Monitoring Goroutines](#112-monitoring-goroutines)
+  - [11.2.1 Health Check System](#1121-health-check-system)
+
+### Chapter 12: Conclusion and Best Practices Summary
+- [12.1 Key Takeaways](#121-key-takeaways)
+- [12.2 When to Use Goroutines](#122-when-to-use-goroutines)
+- [12.3 Performance Guidelines](#123-performance-guidelines)
+- [12.4 Common Patterns Summary](#124-common-patterns-summary)
+
+---
+
 ## Chapter 1: Understanding Goroutines
 
 ### 1.1 What are Goroutines?
