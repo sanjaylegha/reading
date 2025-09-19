@@ -1,8 +1,147 @@
-The goal is to go beyond just "what is a topic" to really explain "why topics matter" and "how they fit into the bigger picture" of distributed systems and event-driven architectures.
 
 
 
 # Understanding Kafka Topics - The Foundation of Event Streaming
+
+## Table of Contents
+
+### Part I: Fundamentals
+**Chapter 1: Understanding Kafka Topics - The Foundation of Event Streaming**
+- 1.1 The Conceptual Foundation
+- 1.2 The Partition Architecture: Scaling and Parallelism
+- 1.3 Data Persistence and Retention
+- 1.4 Replication and Fault Tolerance
+- 1.5 Consumer Groups and Message Delivery Semantics
+- 1.6 Real-World Applications and Use Cases
+- 1.7 Design Patterns and Best Practices
+- 1.8 Performance Considerations and Optimization
+- 1.9 Monitoring and Observability
+- 1.10 Security and Access Control
+- 1.11 Evolution and Schema Management
+- 1.12 Anti-Patterns and Common Pitfalls
+- 1.13 Future Trends and Developments
+
+**Chapter 2: Kafka Producers - The Data Ingestion Engine**
+- 2.1 The Producer Architecture: From Application to Broker
+- 2.2 Serialization: Bridging Application and Storage Domains
+- 2.3 Partitioning Strategies: Controlling Data Distribution
+- 2.4 Batching and Performance Optimization
+- 2.5 Reliability and Error Handling
+- 2.6 Compression: Balancing CPU and Network
+- 2.7 Transactional Producers and Exactly-Once Semantics
+- 2.8 Producer Metrics and Monitoring
+- 2.9 Advanced Configuration and Tuning
+- 2.10 Producer Design Patterns
+- 2.11 Testing and Development Best Practices
+- 2.12 Anti-Patterns and Common Pitfalls
+- 2.13 Evolution and Future Directions
+
+**Chapter 3: Kafka Consumers - The Data Processing Engine**
+- 3.1 The Consumer Architecture: From Broker to Application
+- 3.2 Consumer Groups: Coordination and Load Distribution
+- 3.3 Offset Management: Tracking Progress and Ensuring Reliability
+- 3.4 Fetch Optimization: Balancing Latency and Throughput
+- 3.5 Deserialization and Data Evolution
+- 3.6 Consumer Threading Models and Concurrency
+- 3.7 State Management and Stream Processing
+- 3.8 Error Handling and Resilience Patterns
+- 3.9 Performance Optimization and Tuning
+- 3.10 Consumer Metrics and Monitoring
+- 3.11 Security and Access Control
+- 3.12 Testing Strategies for Consumers
+- 3.13 Operational Patterns and Best Practices
+- 3.14 Anti-Patterns and Common Pitfalls
+- 3.15 Future Trends and Developments
+
+### Part II: Advanced Architecture
+**Chapter 4: Partitions, Offsets, and Consumer Groups - The Coordination Trinity**
+- 4.1 Partitions: The Unit of Parallelism and Order
+- 4.2 Offsets: Progress Tracking and Replay Mechanisms
+- 4.3 Consumer Groups: Coordination and Load Balancing
+- 4.4 The Interaction Between Partitions, Offsets, and Consumer Groups
+- 4.5 Advanced Coordination Patterns
+- 4.6 Monitoring and Observability
+- 4.7 Performance Optimization Strategies
+- 4.8 Failure Scenarios and Recovery Patterns
+- 4.9 Security and Access Control
+- 4.10 Testing and Validation Strategies
+- 4.11 Troubleshooting Common Issues
+- 4.12 Best Practices and Design Patterns
+- 4.13 Future Evolution and Trends
+
+**Chapter 5: Kafka Brokers & Clusters - The Distributed Foundation**
+- 5.1 The Broker Architecture: Building Blocks of Distributed Streaming
+- 5.2 Cluster Formation and Membership Management
+- 5.3 Replication and Fault Tolerance
+- 5.4 Storage Architecture and Performance
+- 5.5 Network Architecture and Communication Patterns
+- 5.6 Cluster Coordination and Consensus
+- 5.7 Performance Characteristics and Optimization
+- 5.8 Monitoring and Observability
+- 5.9 Security Architecture
+- 5.10 Operational Patterns and Best Practices
+- 5.11 Troubleshooting and Problem Resolution
+- 5.12 Future Evolution and Trends
+
+### Part III: Data Management and Evolution
+**Chapter 6: Schema Evolution - The Art of Change in Streaming Systems**
+- 6.1 The Schema Evolution Challenge
+- 6.2 Serialization Formats and Evolution Capabilities
+- 6.3 Schema Registry: The Central Nervous System
+- 6.4 Compatibility Types and Evolution Rules
+- 6.5 Evolution Patterns and Strategies
+- 6.6 Schema Design Best Practices
+- 6.7 Tools and Ecosystem
+- 6.8 Organizational Patterns
+- 6.9 Advanced Evolution Scenarios
+- 6.10 Performance and Operational Considerations
+- 6.11 Real-World Case Studies and Patterns
+- 6.12 Anti-Patterns and Common Pitfalls
+- 6.13 Future Trends and Evolution
+
+### Part IV: Platform Evolution
+**Chapter 7: KRaft - The Evolution Toward Self-Managed Kafka**
+- 7.1 The ZooKeeper Legacy: Understanding the Need for Change
+- 7.2 KRaft Architecture: A Native Consensus Solution
+- 7.3 Controller Architecture and Leadership
+- 7.4 Metadata Management and Event Sourcing
+- 7.5 Performance Characteristics and Scalability
+- 7.6 Operational Simplification
+- 7.7 Migration Strategies and Transition Planning
+- 7.8 Controller Deployment Patterns
+- 7.9 Performance Tuning and Optimization
+- 7.10 Security Considerations
+- 7.11 Troubleshooting and Diagnostics
+- 7.12 Advanced Features and Capabilities
+- 7.13 Ecosystem Impact and Future Implications
+- 7.14 Real-World Case Studies
+
+### Appendices
+**Appendix A: Frequently Asked Questions**
+- A.1 Scaling and Partitioning
+- A.2 Producer Behavior and Partition Selection
+- A.3 Consumer Groups and Load Balancing
+- A.4 Ordering and Consistency Guarantees
+
+**Appendix B: Configuration Reference**
+- B.1 Producer Configuration
+- B.2 Consumer Configuration
+- B.3 Broker Configuration
+- B.4 Topic Configuration
+
+**Appendix C: Troubleshooting Guide**
+- C.1 Common Issues and Solutions
+- C.2 Performance Tuning Checklist
+- C.3 Monitoring Best Practices
+
+**Appendix D: Migration and Deployment Guides**
+- D.1 ZooKeeper to KRaft Migration
+- D.2 Multi-Cluster Deployments
+- D.3 Cloud Provider Considerations
+
+---
+
+# Chapter 1: Understanding Kafka Topics - The Foundation of Event Streaming
 
 ## Introduction
 
@@ -10,7 +149,7 @@ In the vast landscape of distributed systems and real-time data processing, Apac
 
 This chapter will take you on a comprehensive journey through the world of Kafka topics, from their basic definition to their sophisticated implementation details, architectural considerations, and real-world applications that have transformed entire industries.
 
-## 1 The Conceptual Foundation
+## 1.1 The Conceptual Foundation
 
 ### What Exactly Is a Kafka Topic?
 
@@ -29,7 +168,7 @@ Topic names in Kafka are more than just identifiers—they're organizational too
 
 The naming convention often reflects the domain (user, payment, inventory), the entity type (profile, transaction, stock), and the event type (updates, completed, levels).
 
-## 2 The Partition Architecture: Scaling and Parallelism
+## 1.2 The Partition Architecture: Scaling and Parallelism
 
 ### Understanding Partitions
 
@@ -57,7 +196,7 @@ One of the most crucial aspects of partitions is their ordering guarantee. Withi
 
 This design choice reflects a fundamental trade-off in distributed systems: you can have either global ordering or high throughput and scalability, but not both. Kafka chooses scalability while providing the tools (key-based partitioning) to maintain ordering where it matters most.
 
-## 3 Data Persistence and Retention
+## 1.3 Data Persistence and Retention
 
 ### The Immutable Log Model
 
@@ -86,7 +225,7 @@ The persistence model has significant implications for storage and performance:
 - **Page Cache Utilization**: Kafka leverages the operating system's page cache for efficient memory usage
 - **Zero-Copy**: Advanced kernel features minimize CPU overhead when transferring data
 
-## 4 Replication and Fault Tolerance
+## 1.4 Replication and Fault Tolerance
 
 ### The Replication Factor
 
@@ -100,7 +239,7 @@ At any given time, one replica of each partition serves as the **leader**, handl
 
 Kafka maintains the concept of **In-Sync Replicas** (ISR)—the set of replicas that are fully caught up with the leader. Only replicas in the ISR are eligible for leader election, ensuring that no committed data is lost during failover.
 
-## 5 Consumer Groups and Message Delivery Semantics
+## 1.5 Consumer Groups and Message Delivery Semantics
 
 ### Understanding Consumer Groups
 
@@ -120,7 +259,7 @@ Kafka provides configurable message delivery semantics:
 
 **Exactly-Once**: Messages are delivered exactly once with no loss or duplication. This requires careful coordination between producers, brokers, and consumers using Kafka's transactional features.
 
-## 6 Real-World Applications and Use Cases
+## 1.6 Real-World Applications and Use Cases
 
 ### Event-Driven Architectures
 
@@ -154,7 +293,7 @@ Topics excel at collecting and distributing log data across distributed systems:
 - **Metrics Collection**: System metrics are streamed through topics to monitoring and alerting systems
 - **Distributed Tracing**: Trace information flows through topics, enabling comprehensive observability across microservices
 
-## 7 Design Patterns and Best Practices
+## 1.7 Design Patterns and Best Practices
 
 ### Topic Design Patterns
 
@@ -184,7 +323,7 @@ Topics excel at collecting and distributing log data across distributed systems:
 
 **Lifecycle Management**: Establish clear policies for topic creation, modification, and deletion.
 
-## 8 Performance Considerations and Optimization
+## 1.8 Performance Considerations and Optimization
 
 ### Throughput Optimization
 
@@ -212,7 +351,7 @@ Topics excel at collecting and distributing log data across distributed systems:
 
 **Compression Efficiency**: Different compression algorithms offer various trade-offs between CPU usage and storage savings.
 
-## 9 Monitoring and Observability
+## 1.9 Monitoring and Observability
 
 ### Key Metrics to Monitor
 
@@ -234,7 +373,7 @@ Topics excel at collecting and distributing log data across distributed systems:
 
 **Storage Utilization**: Track disk usage and retention policy effectiveness.
 
-## 10 Security and Access Control
+## 1.10 Security and Access Control
 
 ### Authentication and Authorization
 
@@ -254,7 +393,7 @@ Topics excel at collecting and distributing log data across distributed systems:
 
 **Audit Logging**: Comprehensive logging of all access and administrative actions.
 
-## 11 Evolution and Schema Management
+## 1.11 Evolution and Schema Management
 
 ### Schema Evolution Challenges
 
@@ -276,7 +415,7 @@ The Confluent Schema Registry provides centralized schema management:
 
 **Schema Discovery**: Enable consumers to discover and adapt to current schemas.
 
-## 12 Anti-Patterns and Common Pitfalls
+## 1.12 Anti-Patterns and Common Pitfalls
 
 ### Design Anti-Patterns
 
@@ -298,7 +437,7 @@ The Confluent Schema Registry provides centralized schema management:
 
 **Insufficient Testing**: Not testing topic configuration and consumer behavior under various failure scenarios.
 
-## 13 Future Trends and Developments
+## 1.13 Future Trends and Developments
 
 ### Serverless Kafka
 
@@ -328,7 +467,7 @@ The topic is not just a technical construct—it's a paradigm that, once mastere
 
 ---
 
-# Chapter 8: Kafka Producers - The Data Ingestion Engine
+# Chapter 2: Kafka Producers - The Data Ingestion Engine
 
 ## Introduction
 
@@ -338,7 +477,7 @@ Understanding Kafka producers goes far beyond simply knowing how to send a messa
 
 This chapter will take you through every aspect of Kafka producers, from their fundamental architecture to advanced optimization techniques, exploring how these seemingly simple components enable some of the world's largest technology companies to process petabytes of data in real-time.
 
-## 8.1 The Producer Architecture: From Application to Broker
+## 2.1 The Producer Architecture: From Application to Broker
 
 ### The Producer's Journey
 
@@ -376,7 +515,7 @@ Kafka producers are designed to be thread-safe, allowing multiple application th
 
 **Callback Handling**: Callbacks for asynchronous sends may be executed on different threads than the sending thread, requiring careful consideration of thread safety in application code.
 
-## 8.2 Serialization: Bridging Application and Storage Domains
+## 2.2 Serialization: Bridging Application and Storage Domains
 
 ### The Serialization Contract
 
@@ -424,7 +563,7 @@ One of the most challenging aspects of serialization in production systems is ha
 
 **Renaming Fields**: Field renames typically require a multi-step process to maintain compatibility.
 
-## 8.3 Partitioning Strategies: Controlling Data Distribution
+## 2.3 Partitioning Strategies: Controlling Data Distribution
 
 ### The Partitioning Decision
 
@@ -496,7 +635,7 @@ The number of partitions in a topic is a crucial design decision that affects pe
 - More complex operational management
 - Increased end-to-end latency for low-throughput topics
 
-## 8.4 Batching and Performance Optimization
+## 2.4 Batching and Performance Optimization
 
 ### The Power of Batching
 
@@ -540,7 +679,7 @@ The producer maintains internal buffers for batching records, and managing these
 
 **Memory Monitoring**: Tracking buffer utilization helps identify when producers are approaching their limits.
 
-## 8.5 Reliability and Error Handling
+## 2.5 Reliability and Error Handling
 
 ### Acknowledgment Levels
 
@@ -588,7 +727,7 @@ For records that repeatedly fail to send, many systems implement dead letter pat
 
 **Alerting and Monitoring**: Failed sends should trigger alerts and be tracked in monitoring systems.
 
-## 8.6 Compression: Balancing CPU and Network
+## 2.6 Compression: Balancing CPU and Network
 
 ### Compression Algorithms
 
@@ -622,7 +761,7 @@ Kafka performs compression at the batch level, which provides several advantages
 
 **Network Efficiency**: Compressed batches reduce network usage for both sending and replication.
 
-## 8.7 Transactional Producers and Exactly-Once Semantics
+## 2.7 Transactional Producers and Exactly-Once Semantics
 
 ### The Challenge of Exactly-Once
 
@@ -664,7 +803,7 @@ Transactional producers are particularly valuable for:
 
 **Database Integration**: Coordinating Kafka writes with database transactions.
 
-## 8.8 Producer Metrics and Monitoring
+## 2.8 Producer Metrics and Monitoring
 
 ### Key Performance Metrics
 
@@ -716,7 +855,7 @@ Effective producer monitoring requires well-designed alerts:
 
 **Resource Alerts**: Monitor buffer utilization and other resource constraints.
 
-## 8.9 Advanced Configuration and Tuning
+## 2.9 Advanced Configuration and Tuning
 
 ### Connection Management
 
@@ -750,7 +889,7 @@ Optimizing producer performance requires a systematic approach:
 
 **Load Testing**: Validate tuning decisions under realistic load conditions.
 
-## 8.10 Producer Design Patterns
+## 2.10 Producer Design Patterns
 
 ### Single Producer Per Topic
 
@@ -792,7 +931,7 @@ Producers can be used in both asynchronous and synchronous patterns:
 
 **Hybrid**: Use synchronous for critical operations and asynchronous for high-volume data.
 
-## 8.11 Testing and Development Best Practices
+## 2.11 Testing and Development Best Practices
 
 ### Unit Testing Producers
 
@@ -824,7 +963,7 @@ Setting up effective development environments for producer development:
 
 **Debugging Tools**: Use logging and metrics to troubleshoot issues during development.
 
-## 8.12 Anti-Patterns and Common Pitfalls
+## 2.12 Anti-Patterns and Common Pitfalls
 
 ### Configuration Anti-Patterns
 
@@ -852,7 +991,7 @@ Setting up effective development environments for producer development:
 
 **Version Mismatches**: Running producer clients with incompatible broker versions.
 
-## 8.13 Evolution and Future Directions
+## 2.13 Evolution and Future Directions
 
 ### Kafka Improvement Proposals (KIPs)
 
@@ -898,7 +1037,7 @@ In our next chapter, we'll explore the other side of the equation: Kafka consume
 
 ---
 
-# Chapter 9: Kafka Consumers - The Data Processing Engine
+# Chapter 3: Kafka Consumers - The Data Processing Engine
 
 ## Introduction
 
@@ -908,7 +1047,7 @@ The art of building effective Kafka consumers goes far beyond simply reading mes
 
 This chapter will guide you through the intricate world of Kafka consumers, exploring everything from basic consumption patterns to advanced stream processing techniques. We'll delve into the sophisticated group coordination protocols that enable automatic load balancing, examine the subtle complexities of offset management, and uncover the strategies that enable consumers to handle the inevitable failures that occur in distributed systems. By the end of this journey, you'll understand not just how to build consumers, but how to build consumers that scale, perform, and remain resilient in the face of real-world challenges.
 
-## 9.1 The Consumer Architecture: From Broker to Application
+## 3.1 The Consumer Architecture: From Broker to Application
 
 ### The Consumer's Mission
 
@@ -942,7 +1081,7 @@ Kafka employs a pull-based consumption model, where consumers actively request d
 
 **Simplicity**: Brokers don't need to track the state of individual consumers or manage complex delivery acknowledgment protocols.
 
-## 9.2 Consumer Groups: Coordination and Load Distribution
+## 3.2 Consumer Groups: Coordination and Load Distribution
 
 ### The Consumer Group Abstraction
 
@@ -1002,7 +1141,7 @@ Kafka provides several strategies for assigning partitions to consumers during r
 
 **Cooperative Sticky Assignor**: An evolution of the sticky assignor that performs incremental rebalancing, allowing consumers to continue processing partitions that aren't being reassigned.
 
-## 9.3 Offset Management: Tracking Progress and Ensuring Reliability
+## 3.3 Offset Management: Tracking Progress and Ensuring Reliability
 
 ### Understanding Offsets
 
@@ -1048,7 +1187,7 @@ The combination of offset management and error handling determines the delivery 
 
 **Exactly-Once**: Records are processed exactly once with no loss or duplication. Requires coordination between offset commits and external state changes, often using transactions or idempotent operations.
 
-## 9.4 Fetch Optimization: Balancing Latency and Throughput
+## 3.4 Fetch Optimization: Balancing Latency and Throughput
 
 ### The Fetch Request Lifecycle
 
@@ -1082,7 +1221,7 @@ Modern Kafka consumers implement sophisticated prefetching mechanisms to hide ne
 
 **Adaptive Fetching**: Some implementations adaptively adjust fetch parameters based on consumption patterns and processing speed.
 
-## 9.5 Deserialization and Data Evolution
+## 3.5 Deserialization and Data Evolution
 
 ### The Deserialization Challenge
 
@@ -1128,7 +1267,7 @@ Deserialization errors are inevitable in production systems and require careful 
 
 **Graceful Degradation**: Process what can be processed and handle missing or malformed fields gracefully.
 
-## 9.6 Consumer Threading Models and Concurrency
+## 3.6 Consumer Threading Models and Concurrency
 
 ### Single-Threaded Model
 
@@ -1164,7 +1303,7 @@ Multi-threaded consumer implementations must address several challenges:
 
 **Resource Management**: Managing thread pools, queues, and other shared resources effectively.
 
-## 9.7 State Management and Stream Processing
+## 3.7 State Management and Stream Processing
 
 ### Stateless vs. Stateful Processing
 
@@ -1208,7 +1347,7 @@ Many applications use specialized stream processing frameworks built on top of K
 
 **Apache Spark Streaming**: Batch processing engine adapted for stream processing workloads.
 
-## 9.8 Error Handling and Resilience Patterns
+## 3.8 Error Handling and Resilience Patterns
 
 ### Categories of Consumer Errors
 
@@ -1251,7 +1390,7 @@ Implementing effective retry strategies is crucial for resilient consumers:
 
 **Automatic Recovery**: Implementing logic to automatically recover from common failure scenarios.
 
-## 9.9 Performance Optimization and Tuning
+## 3.9 Performance Optimization and Tuning
 
 ### Throughput Optimization
 
@@ -1299,7 +1438,7 @@ Efficient memory usage is crucial for stable, high-performance consumers:
 
 **Connection Management**: Efficiently managing connections to Kafka brokers and downstream systems.
 
-## 9.10 Consumer Metrics and Monitoring
+## 3.10 Consumer Metrics and Monitoring
 
 ### Key Performance Indicators
 
@@ -1353,7 +1492,7 @@ Kafka consumers expose comprehensive metrics through JMX:
 
 **Custom Metrics**: Application-specific metrics integrated with Kafka's metrics system.
 
-## 9.11 Security and Access Control
+## 3.11 Security and Access Control
 
 ### Authentication Mechanisms
 
@@ -1391,7 +1530,7 @@ Protecting data in transit and at rest:
 
 **Audit Logging**: Comprehensive logging of all security-related events.
 
-## 9.12 Testing Strategies for Consumers
+## 3.12 Testing Strategies for Consumers
 
 ### Unit Testing
 
@@ -1429,7 +1568,7 @@ Testing resilience through controlled failure injection:
 
 **Data Corruption**: Testing handling of malformed or corrupted data.
 
-## 9.13 Operational Patterns and Best Practices
+## 3.13 Operational Patterns and Best Practices
 
 ### Deployment Patterns
 
@@ -1461,7 +1600,7 @@ Testing resilience through controlled failure injection:
 
 **Recovery Procedures**: Detailed steps for recovering from various failure scenarios.
 
-## 9.14 Anti-Patterns and Common Pitfalls
+## 3.14 Anti-Patterns and Common Pitfalls
 
 ### Design Anti-Patterns
 
@@ -1491,7 +1630,7 @@ Testing resilience through controlled failure injection:
 
 **No Error Handling**: Not properly handling errors, leading to data loss or processing failures.
 
-## 9.15 Future Trends and Developments
+## 3.15 Future Trends and Developments
 
 ### Serverless Consumers
 
@@ -1549,7 +1688,7 @@ The journey from data to insights, from events to actions, begins with producers
 
 ---
 
-# Chapter 10: Partitions, Offsets, and Consumer Groups - The Coordination Trinity
+# Chapter 4: Partitions, Offsets, and Consumer Groups - The Coordination Trinity
 
 ## Introduction
 
@@ -1561,7 +1700,7 @@ This chapter will take you on a deep exploration of these foundational concepts,
 
 By the end of this journey, you'll understand not just what partitions, offsets, and consumer groups are, but why they are designed the way they are, how they enable the guarantees that applications depend on, and how to leverage them effectively in your own streaming architectures.
 
-## 10.1 Partitions: The Unit of Parallelism and Order
+## 4.1 Partitions: The Unit of Parallelism and Order
 
 ### The Partition Abstraction
 
@@ -1643,7 +1782,7 @@ One of the most common operational challenges with partitioned systems is the ho
 - Dynamic repartitioning (though this requires careful coordination)
 - Monitoring and alerting to detect hot partitions quickly
 
-## 10.2 Offsets: Progress Tracking and Replay Mechanisms
+## 4.2 Offsets: Progress Tracking and Replay Mechanisms
 
 ### The Offset Model
 
@@ -1740,7 +1879,7 @@ The interaction between offset commits and message processing determines the del
 - Most complex to implement but provides strongest guarantees
 - Essential for financial and other critical applications
 
-## 10.3 Consumer Groups: Coordination and Load Balancing
+## 4.3 Consumer Groups: Coordination and Load Balancing
 
 ### The Consumer Group Abstraction
 
@@ -1844,7 +1983,7 @@ The group coordinator plays several critical roles:
 
 **Health Monitoring**: Detecting failed consumers through heartbeat monitoring.
 
-## 10.4 The Interaction Between Partitions, Offsets, and Consumer Groups
+## 4.4 The Interaction Between Partitions, Offsets, and Consumer Groups
 
 ### Partition-to-Consumer Assignment
 
@@ -1894,7 +2033,7 @@ Different consumer groups maintain complete independence:
 
 **Different Assignment Strategies**: Each group can use different partition assignment strategies.
 
-## 10.5 Advanced Coordination Patterns
+## 4.5 Advanced Coordination Patterns
 
 ### Static Membership
 
@@ -1932,7 +2071,7 @@ Advanced applications can implement custom partition assignment strategies:
 
 **Implementation Complexity**: Requires deep understanding of the assignment protocol and careful testing.
 
-## 10.6 Monitoring and Observability
+## 4.6 Monitoring and Observability
 
 ### Partition-Level Metrics
 
@@ -1988,7 +2127,7 @@ Effective monitoring requires well-designed dashboards:
 
 **Alerting Integration**: Automated alerts for anomalous conditions like excessive lag, frequent rebalancing, or coordinator failures.
 
-## 10.7 Performance Optimization Strategies
+## 4.7 Performance Optimization Strategies
 
 ### Partition Count Optimization
 
@@ -2028,7 +2167,7 @@ Optimizing offset commit strategies for performance:
 
 **Offset Storage Tuning**: Optimizing the consumer offsets topic configuration for your workload.
 
-## 10.8 Failure Scenarios and Recovery Patterns
+## 4.8 Failure Scenarios and Recovery Patterns
 
 ### Partition Leader Failures
 
@@ -2078,7 +2217,7 @@ Network partitions can create complex failure scenarios:
 
 **Consumer Impact**: Consumers in minority partitions may experience temporary unavailability.
 
-## 10.9 Security and Access Control
+## 4.9 Security and Access Control
 
 ### Partition-Level Security
 
@@ -2116,7 +2255,7 @@ Ensuring proper isolation between different consumer groups:
 
 **Encryption**: Encrypting sensitive data in consumer group coordination messages.
 
-## 10.10 Testing and Validation Strategies
+## 4.10 Testing and Validation Strategies
 
 ### Partition Distribution Testing
 
@@ -2154,7 +2293,7 @@ Validating offset management across various scenarios:
 
 **Cross-Group Independence**: Verifying that offset operations in one group don't affect others.
 
-## 10.11 Troubleshooting Common Issues
+## 4.11 Troubleshooting Common Issues
 
 ### Rebalancing Problems
 
@@ -2192,7 +2331,7 @@ Problems with partition distribution and assignment:
 
 **State Rebuilding**: Excessive state rebuilding after rebalancing; consider sticky assignment strategies.
 
-## 10.12 Best Practices and Design Patterns
+## 4.12 Best Practices and Design Patterns
 
 ### Partition Design Best Practices
 
@@ -2230,7 +2369,7 @@ Problems with partition distribution and assignment:
 
 **Plan for Recovery**: Design clear procedures for handling offset-related issues.
 
-## 10.13 Future Evolution and Trends
+## 4.13 Future Evolution and Trends
 
 ### Protocol Enhancements
 
@@ -2284,7 +2423,7 @@ The coordination trinity of partitions, offsets, and consumer groups represents 
 
 ---
 
-# Chapter 11: Kafka Brokers & Clusters - The Distributed Foundation
+# Chapter 5: Kafka Brokers & Clusters - The Distributed Foundation
 
 ## Introduction
 
@@ -2294,7 +2433,7 @@ Understanding Kafka brokers and clusters is about more than learning server conf
 
 This chapter will take you deep into the world of Kafka's distributed architecture, exploring how brokers work individually and collectively to provide the guarantees that application developers take for granted. We'll examine the sophisticated replication protocols that ensure data durability, the leadership election algorithms that maintain availability during failures, and the storage systems that enable Kafka to achieve its legendary performance characteristics. By the end of this journey, you'll understand not just how to deploy and operate Kafka clusters, but why they are designed the way they are and how they enable the streaming revolution that is transforming modern software architecture.
 
-## 11.1 The Broker Architecture: Building Blocks of Distributed Streaming
+## 5.1 The Broker Architecture: Building Blocks of Distributed Streaming
 
 ### What Is a Kafka Broker?
 
@@ -2336,7 +2475,7 @@ Each broker in a Kafka cluster has a unique identifier and network address:
 
 **Security Protocols**: Different endpoints may use different security protocols (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL) based on security requirements.
 
-## 11.2 Cluster Formation and Membership Management
+## 5.2 Cluster Formation and Membership Management
 
 ### The Bootstrap Process
 
@@ -2388,7 +2527,7 @@ Kafka clusters can be scaled in several ways to meet changing requirements:
 
 **Network Scaling**: Upgrading network infrastructure to support higher throughput and lower latency.
 
-## 11.3 Replication and Fault Tolerance
+## 5.3 Replication and Fault Tolerance
 
 ### The Replication Model
 
@@ -2438,7 +2577,7 @@ For maximum fault tolerance, replicas should be distributed across failure domai
 
 **Operational Complexity**: Cross-rack placement increases complexity but is essential for production deployments.
 
-## 11.4 Storage Architecture and Performance
+## 5.4 Storage Architecture and Performance
 
 ### Log-Structured Storage
 
@@ -2488,7 +2627,7 @@ Optimal storage performance requires careful configuration:
 
 **Retention Policies**: Balancing retention requirements with storage costs and performance implications.
 
-## 11.5 Network Architecture and Communication Patterns
+## 5.5 Network Architecture and Communication Patterns
 
 ### Inter-Broker Communication
 
@@ -2538,7 +2677,7 @@ Efficient connection management is crucial for cluster performance:
 
 **Resource Limits**: Connection limits and resource quotas prevent individual clients from overwhelming brokers.
 
-## 11.6 Cluster Coordination and Consensus
+## 5.6 Cluster Coordination and Consensus
 
 ### ZooKeeper Integration
 
@@ -2576,7 +2715,7 @@ Distributed consensus is one of the hardest problems in computer science:
 
 **Performance vs. Safety**: Balancing the performance impact of consensus protocols with safety requirements.
 
-## 11.7 Performance Characteristics and Optimization
+## 5.7 Performance Characteristics and Optimization
 
 ### Throughput Optimization
 
@@ -2626,7 +2765,7 @@ Different scaling patterns address different growth scenarios:
 
 **Predictive Scaling**: Anticipating capacity needs based on historical patterns and business forecasts.
 
-## 11.8 Monitoring and Observability
+## 5.8 Monitoring and Observability
 
 ### Broker-Level Metrics
 
@@ -2684,7 +2823,7 @@ Effective alerting requires understanding different types of issues:
 
 **Coordination Alerts**: Notification when cluster coordination mechanisms experience problems.
 
-## 11.9 Security Architecture
+## 5.9 Security Architecture
 
 ### Authentication Mechanisms
 
@@ -2734,7 +2873,7 @@ Protecting sensitive data stored within the cluster:
 
 **Data Masking**: Selectively masking sensitive data for different consumer groups or environments.
 
-## 11.10 Operational Patterns and Best Practices
+## 5.10 Operational Patterns and Best Practices
 
 ### Deployment Patterns
 
@@ -2776,7 +2915,7 @@ Protecting sensitive data stored within the cluster:
 
 **Testing Recovery Procedures**: Regular testing of backup and recovery procedures to ensure effectiveness.
 
-## 11.11 Troubleshooting and Problem Resolution
+## 5.11 Troubleshooting and Problem Resolution
 
 ### Common Issues
 
@@ -2808,7 +2947,7 @@ Protecting sensitive data stored within the cluster:
 
 **Data Recovery**: Recovering from data corruption or loss scenarios.
 
-## 11.12 Future Evolution and Trends
+## 5.12 Future Evolution and Trends
 
 ### KRaft and Self-Management
 
@@ -2873,7 +3012,7 @@ In our next chapter, we'll explore schema evolution and data compatibility—the
 The journey from concepts to concrete systems, from abstractions to infrastructure, culminates in understanding brokers and clusters. They are the foundation upon which the entire event streaming revolution is built, the infrastructure that enables the transformation from traditional request-response architectures to the reactive, event-driven systems that define modern software architecture. Master the broker architecture, and you master the foundation of streaming systems engineering.
 
 ---
-# Chapter 12: Schema Evolution - The Art of Change in Streaming Systems
+# Chapter 6: Schema Evolution - The Art of Change in Streaming Systems
 
 ## Introduction
 
@@ -2885,7 +3024,7 @@ This chapter will take you on a comprehensive journey through the world of schem
 
 By the end of this exploration, you'll understand not just how to implement schema evolution, but why it's essential for building resilient, adaptable streaming architectures that can evolve gracefully over time.
 
-## 12.1 The Schema Evolution Challenge
+## 6.1 The Schema Evolution Challenge
 
 ### Why Schema Evolution Matters
 
@@ -2931,7 +3070,7 @@ When implemented correctly, schema evolution enables:
 
 **Business Agility**: Organizations can adapt quickly to changing requirements and market conditions.
 
-## 12.2 Serialization Formats and Evolution Capabilities
+## 6.2 Serialization Formats and Evolution Capabilities
 
 ### JSON: Human-Readable but Limited
 
@@ -3048,7 +3187,7 @@ message User {
 
 **Cap'n Proto**: Infinite-speed serialization with strong schema evolution guarantees.
 
-## 12.3 Schema Registry: The Central Nervous System
+## 6.3 Schema Registry: The Central Nervous System
 
 ### What Is a Schema Registry?
 
@@ -3116,7 +3255,7 @@ Schema registries typically integrate closely with Kafka:
 
 **Serializer/Deserializer Integration**: Built-in serializers handle schema resolution transparently.
 
-## 12.4 Compatibility Types and Evolution Rules
+## 6.4 Compatibility Types and Evolution Rules
 
 ### Backward Compatibility
 
@@ -3188,7 +3327,7 @@ Transitive compatibility extends compatibility checks across all schema versions
 
 **Operational Considerations**: May be overly restrictive for some use cases but provides maximum safety.
 
-## 12.5 Evolution Patterns and Strategies
+## 6.5 Evolution Patterns and Strategies
 
 ### Additive Changes Pattern
 
@@ -3295,7 +3434,7 @@ Changing field types requires understanding promotion rules:
 - Clear separation but requires consumer updates
 - Useful for major breaking changes
 
-## 12.6 Schema Design Best Practices
+## 6.6 Schema Design Best Practices
 
 ### Design for Evolution from Day One
 
@@ -3355,7 +3494,7 @@ Changing field types requires understanding promotion rules:
 - Define roles and responsibilities for schema management
 - Implement automated testing for schema changes
 
-## 12.7 Tools and Ecosystem
+## 6.7 Tools and Ecosystem
 
 ### Confluent Schema Registry
 
@@ -3418,7 +3557,7 @@ The most widely used schema registry implementation:
 - Automated schema registration during builds
 - Compatibility validation as part of build process
 
-## 12.8 Organizational Patterns
+## 6.8 Organizational Patterns
 
 ### Schema Ownership Models
 
@@ -3478,7 +3617,7 @@ The most widely used schema registry implementation:
 - Decision-making frameworks for schema changes
 - Escalation procedures for complex changes
 
-## 12.9 Advanced Evolution Scenarios
+## 6.9 Advanced Evolution Scenarios
 
 ### Breaking Changes Management
 
@@ -3541,7 +3680,7 @@ For organizations with multiple regions or clusters:
 - Compliance and localization requirements
 - Coordination across regions
 
-## 12.10 Performance and Operational Considerations
+## 6.10 Performance and Operational Considerations
 
 ### Serialization Performance Impact
 
@@ -3595,7 +3734,7 @@ Registry performance affects the entire system:
 - Cross-region failover procedures
 - Data consistency validation after recovery
 
-## 12.11 Real-World Case Studies and Patterns
+## 6.11 Real-World Case Studies and Patterns
 
 ### Large-Scale E-commerce Platform
 
@@ -3665,7 +3804,7 @@ Registry performance affects the entire system:
 - Long data retention periods require strong backward compatibility
 - Automated tooling is essential for managing scale
 
-## 12.12 Anti-Patterns and Common Pitfalls
+## 6.12 Anti-Patterns and Common Pitfalls
 
 ### Schema Design Anti-Patterns
 
@@ -3718,7 +3857,7 @@ Registry performance affects the entire system:
 - Poor integration with development workflows
 - Lack of testing and validation tools
 
-## 12.13 Future Trends and Evolution
+## 6.13 Future Trends and Evolution
 
 ### AI-Assisted Schema Evolution
 
@@ -3791,7 +3930,7 @@ In our next chapter, we'll explore stream processing patterns—the techniques a
 Schema evolution is where the rubber meets the road in streaming systems engineering. It's where theoretical concepts about distributed systems meet practical realities of organizational change management. Master schema evolution, and you master one of the most critical capabilities for building streaming systems that not only work today, but can adapt and evolve to meet tomorrow's challenges.
 
 ---
-# Chapter 13: KRaft - The Evolution Toward Self-Managed Kafka
+# Chapter 7: KRaft - The Evolution Toward Self-Managed Kafka
 
 ## Introduction
 
@@ -3803,7 +3942,7 @@ This chapter will take you on a comprehensive journey through KRaft's architectu
 
 By the end of this exploration, you'll understand not just how KRaft works, but why it represents one of the most significant architectural evolution in Kafka's history—and how it positions Kafka for the next decade of growth in the event streaming ecosystem.
 
-## 13.1 The ZooKeeper Legacy: Understanding the Need for Change
+## 7.1 The ZooKeeper Legacy: Understanding the Need for Change
 
 ### The Historical Context
 
@@ -3856,7 +3995,7 @@ Perhaps most critically, ZooKeeper created significant operational challenges:
 
 **Tuning Complexity**: Optimal performance required carefully tuning both Kafka and ZooKeeper configurations in coordination.
 
-## 13.2 KRaft Architecture: A Native Consensus Solution
+## 7.2 KRaft Architecture: A Native Consensus Solution
 
 ### The Philosophical Shift
 
@@ -3910,7 +4049,7 @@ The metadata log is the heart of KRaft's design:
 
 **Persistence**: The log provides durable storage for all cluster configuration and state.
 
-## 13.3 Controller Architecture and Leadership
+## 7.3 Controller Architecture and Leadership
 
 ### The Controller Quorum
 
@@ -3975,7 +4114,7 @@ KRaft's leader election process is designed for rapid failover:
 - Election: New leader elected in sub-second timeframes
 - Recovery: Cluster operations resume immediately
 
-## 13.4 Metadata Management and Event Sourcing
+## 7.4 Metadata Management and Event Sourcing
 
 ### Event Sourcing Architecture
 
@@ -4036,7 +4175,7 @@ KRaft implements state machine replication principles:
 
 **Recovery**: Controllers can recover their state by replaying events from any consistent point.
 
-## 13.5 Performance Characteristics and Scalability
+## 7.5 Performance Characteristics and Scalability
 
 ### Throughput Improvements
 
@@ -4086,7 +4225,7 @@ Operations that previously required ZooKeeper coordination are now faster:
 
 **Startup Time**: Faster cluster startup without ZooKeeper dependencies.
 
-## 13.6 Operational Simplification
+## 7.6 Operational Simplification
 
 ### Single System Management
 
@@ -4136,7 +4275,7 @@ Backup and recovery procedures are simplified:
 
 **Testing**: Simpler disaster recovery testing procedures.
 
-## 13.7 Migration Strategies and Transition Planning
+## 7.7 Migration Strategies and Transition Planning
 
 ### Migration Approaches
 
@@ -4200,7 +4339,7 @@ The migration process involves several phases:
 - Documentation updates
 - Final validation
 
-## 13.8 Controller Deployment Patterns
+## 7.8 Controller Deployment Patterns
 
 ### Dedicated Controller Pattern
 
@@ -4250,7 +4389,7 @@ Ensuring controller availability:
 
 **Automatic Recovery**: Automated restart and recovery procedures.
 
-## 13.9 Performance Tuning and Optimization
+## 7.9 Performance Tuning and Optimization
 
 ### Controller Performance Tuning
 
@@ -4304,7 +4443,7 @@ Establishing performance baselines:
 
 **Stress Testing**: Understanding performance under extreme loads.
 
-## 13.10 Security Considerations
+## 7.10 Security Considerations
 
 ### Controller Security
 
@@ -4354,7 +4493,7 @@ Security in multi-tenant environments:
 
 **Resource Quotas**: Enforcing resource limits per tenant.
 
-## 13.11 Troubleshooting and Diagnostics
+## 7.11 Troubleshooting and Diagnostics
 
 ### Common Issues
 
@@ -4404,7 +4543,7 @@ Comprehensive monitoring strategies:
 
 **Alert Escalation**: Appropriate alert routing and escalation procedures.
 
-## 13.12 Advanced Features and Capabilities
+## 7.12 Advanced Features and Capabilities
 
 ### Dynamic Reconfiguration
 
@@ -4454,7 +4593,7 @@ Planned improvements to KRaft:
 
 **Operational Enhancements**: Improved operational tooling and procedures.
 
-## 13.13 Ecosystem Impact and Future Implications
+## 7.13 Ecosystem Impact and Future Implications
 
 ### Tool and Framework Adaptation
 
@@ -4504,7 +4643,7 @@ The Kafka community is rallying around KRaft:
 
 **Best Practices**: Community-driven best practices and patterns.
 
-## 13.14 Real-World Case Studies
+## 7.14 Real-World Case Studies
 
 ### Large-Scale Enterprise Migration
 
